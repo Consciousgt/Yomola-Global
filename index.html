@@ -1,147 +1,180 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Yomola Global Admin</title>
+  <meta charset="UTF-8">
+  <title>Yomola Global</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 500px;
-      margin: auto;
-      padding: 30px;
-    }
-    input, button {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-    }
-    button {
-      cursor: pointer;
-    }
-    .hidden {
-      display: none;
-    }
-    .error {
-      color: red;
-    }
-    .card {
-      border: 1px solid #ddd;
-      padding: 15px;
-      margin-top: 15px;
-      border-radius: 6px;
-    }
+    body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; }
+    input, select, button { padding: 8px; margin: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    .hidden { display: none; }
+    .card { border: 1px solid #ccc; padding: 15px; margin: 10px 0; }
   </style>
 </head>
 <body>
 
-<h2 id="title">Admin Login</h2>
+<h2>Yomola Global Business Manager</h2>
 
 <!-- LOGIN -->
 <div id="login">
-  <input id="email" type="email" placeholder="Email" />
-  <input id="password" type="password" placeholder="Password" />
-  <button id="loginBtn">Login</button>
-  <p id="error" class="error"></p>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <p id="error" style="color:red"></p>
 </div>
 
-<!-- DASHBOARD -->
-<div id="dashboard" class="hidden">
-  <h2>Admin Dashboard</h2>
+<!-- APP -->
+<div id="app" class="hidden">
 
-  <div class="card">
-    <p><strong>Status:</strong> Logged in</p>
-    <p id="role"></p>
-  </div>
+<button onclick="logout()">Logout</button>
 
-  <div class="card">
-    <p><strong>Next steps:</strong></p>
-    <ul>
-      <li>Create staff</li>
-      <li>Add clients</li>
-      <li>Record transactions</li>
-    </ul>
-  </div>
+<div class="card">
+  <h3>Add Client</h3>
+  <input id="clientName" placeholder="Client Name">
+  <button onclick="addClient()">Add Client</button>
+</div>
 
-  <button onclick="logout()">Logout</button>
+<div class="card">
+  <h3>Clients</h3>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Balance</th></tr>
+    </thead>
+    <tbody id="clients"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Record Transaction</h3>
+  <select id="txClient"></select>
+  <input id="txAmount" type="number" placeholder="Amount">
+  <select id="txType">
+    <option value="SALE">Sale</option>
+    <option value="EXPENSE">Expense</option>
+  </select>
+  <button onclick="addTransaction()">Save</button>
+</div>
+
+<div class="card">
+  <h3>Transactions</h3>
+  <table>
+    <thead>
+      <tr><th>Client</th><th>Amount</th><th>Type</th><th>Date</th></tr>
+    </thead>
+    <tbody id="transactions"></tbody>
+  </table>
+</div>
+
 </div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getAuth,
-    signInWithEmailAndPassword,
-    signOut,
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import {
-    getFirestore,
-    doc,
-    getDoc
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, doc, getDoc, updateDoc, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  // 🔥 YOUR FIREBASE CONFIG (CORRECT)
-  const firebaseConfig = {
-    apiKey: "AIzaSyCXm7IybpnE17zdXnbo7OdD32KSTXKqmSY",
-    authDomain: "yomola-global-1f552.firebaseapp.com",
-    projectId: "yomola-global-1f552",
-    storageBucket: "yomola-global-1f552.appspot.com",
-    messagingSenderId: "884873998736",
-    appId: "1:884873998736:web:b48cf603c4f55f91ee0315"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyCXm7IybpnE17zdXnbo7OdD32KSTXKqmSY",
+  authDomain: "yomola-global-1f552.firebaseapp.com",
+  projectId: "yomola-global-1f552",
+  storageBucket: "yomola-global-1f552.appspot.com",
+  messagingSenderId: "884873998736",
+  appId: "1:884873998736:web:b48cf603c4f55f91ee0315"
+};
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-  const loginDiv = document.getElementById("login");
-  const dashboard = document.getElementById("dashboard");
-  const error = document.getElementById("error");
-  const roleText = document.getElementById("role");
-  const title = document.getElementById("title");
+const loginDiv = document.getElementById("login");
+const appDiv = document.getElementById("app");
+const error = document.getElementById("error");
 
-  document.getElementById("loginBtn").onclick = async () => {
-    error.innerText = "";
-    try {
-      await signInWithEmailAndPassword(
-        auth,
-        document.getElementById("email").value,
-        document.getElementById("password").value
-      );
-    } catch (e) {
-      error.innerText = e.message;
-    }
-  };
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    loginDiv.classList.remove("hidden");
+    appDiv.classList.add("hidden");
+    return;
+  }
 
-  // ✅ AUTH STATE SYNC (THIS WAS MISSING)
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      loginDiv.classList.remove("hidden");
-      dashboard.classList.add("hidden");
-      title.innerText = "Admin Login";
-      return;
-    }
+  const staff = await getDoc(doc(db, "staff", user.uid));
+  if (!staff.exists()) {
+    await signOut(auth);
+    error.innerText = "Not authorized";
+    return;
+  }
 
-    // Verify role
-    const ref = doc(db, "staff", user.uid);
-    const snap = await getDoc(ref);
+  loginDiv.classList.add("hidden");
+  appDiv.classList.remove("hidden");
+  loadClients();
+  loadTransactions();
+});
 
-    if (!snap.exists()) {
-      await signOut(auth);
-      error.innerText = "Not authorized";
-      return;
-    }
+window.login = async () => {
+  try {
+    await signInWithEmailAndPassword(auth,
+      email.value, password.value);
+  } catch (e) {
+    error.innerText = e.message;
+  }
+};
 
-    // Show dashboard
-    loginDiv.classList.add("hidden");
-    dashboard.classList.remove("hidden");
-    title.innerText = "Dashboard";
-    roleText.innerText = `Role: ${snap.data().role.toUpperCase()}`;
+window.logout = async () => {
+  await signOut(auth);
+};
+
+async function loadClients() {
+  clients.innerHTML = "";
+  txClient.innerHTML = "";
+
+  const snap = await getDocs(collection(db, "clients"));
+  snap.forEach(d => {
+    const c = d.data();
+    clients.innerHTML += `<tr><td>${c.name}</td><td>${c.balance}</td></tr>`;
+    txClient.innerHTML += `<option value="${d.id}">${c.name}</option>`;
+  });
+}
+
+window.addClient = async () => {
+  if (!clientName.value) return;
+  await addDoc(collection(db, "clients"), {
+    name: clientName.value,
+    balance: 0
+  });
+  clientName.value = "";
+  loadClients();
+};
+
+async function loadTransactions() {
+  transactions.innerHTML = "";
+  const snap = await getDocs(collection(db, "transactions"));
+  snap.forEach(d => {
+    const t = d.data();
+    transactions.innerHTML +=
+      `<tr><td>${t.clientId}</td><td>${t.amount}</td><td>${t.type}</td><td>${t.date?.toDate().toLocaleString()}</td></tr>`;
+  });
+}
+
+window.addTransaction = async () => {
+  const amount = Number(txAmount.value);
+  if (!amount) return;
+
+  await addDoc(collection(db, "transactions"), {
+    clientId: txClient.value,
+    amount,
+    type: txType.value,
+    date: serverTimestamp(),
+    staffId: auth.currentUser.uid
   });
 
-  window.logout = async () => {
-    await signOut(auth);
-    location.reload();
-  };
+  await updateDoc(doc(db, "clients", txClient.value), {
+    balance: increment(txType.value === "SALE" ? amount : -amount)
+  });
+
+  txAmount.value = "";
+  loadClients();
+  loadTransactions();
+};
 </script>
 
 </body>
