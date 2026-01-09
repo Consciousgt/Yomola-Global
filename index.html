@@ -80,7 +80,6 @@
 
             init: async () => {
                 try {
-                    // Check if firebase is available
                     CloudStorage.isReady = typeof firebase !== 'undefined';
                     return CloudStorage.isReady;
                 } catch (e) {
@@ -89,30 +88,61 @@
                 }
             },
 
-            loadApp: async () => {
+            // --- SETTINGS (SINGLE DOC) ---
+            loadSettings: async () => {
                 try {
                     const doc = await db.collection('app').doc('settings').get();
                     if (doc.exists) {
                         return doc.data();
                     } else {
-                        const defaultSettings = { staff: [], businessName: 'Yomola Global', adminPin: null };
+                        const defaultSettings = { businessName: 'Yomola Global', adminPin: null };
                         await db.collection('app').doc('settings').set(defaultSettings);
                         return defaultSettings;
                     }
                 } catch (e) {
-                    console.error("Load app error:", e);
-                    return { staff: [], businessName: 'Yomola Global', adminPin: null };
+                    console.error("Load settings error:", e);
+                    return { businessName: 'Yomola Global', adminPin: null };
                 }
             },
 
-            saveApp: async (data) => {
+            saveSettings: async (data) => {
                 try {
                     await db.collection('app').doc('settings').set(data, { merge: true });
                 } catch (e) {
-                    console.error('Save app error:', e);
+                    console.error('Save settings error:', e);
                 }
             },
 
+            // --- STAFF (COLLECTION) ---
+            loadStaff: async () => {
+                try {
+                    const snapshot = await db.collection('staff').get();
+                    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                } catch (e) {
+                    console.error("Load staff error:", e);
+                    return [];
+                }
+            },
+
+            addStaff: async (staff) => {
+                try {
+                    const ref = await db.collection('staff').add({ ...staff, createdAt: new Date().toISOString() });
+                    return { ...staff, id: ref.id };
+                } catch (e) {
+                    console.error("Add staff error:", e);
+                    throw e;
+                }
+            },
+
+            deleteStaff: async (id) => {
+                try {
+                    await db.collection('staff').doc(id).delete();
+                } catch (e) {
+                    console.error("Delete staff error:", e);
+                }
+            },
+
+            // --- CLIENTS (COLLECTION) ---
             loadClients: async () => {
                 try {
                     const snapshot = await db.collection('clients').get();
@@ -123,36 +153,35 @@
                 }
             },
 
-            saveClients: async (clients) => {
-                // Since firestore is individual docs, we usually save one at a time.
-                // But for compatibility with existing logic, we'll assume this is for bulk/sync.
-                // In practice, individual CRUD is better.
+            getClientByPhone: async (phone) => {
                 try {
-                    const batch = db.batch();
-                    clients.forEach(client => {
-                        const ref = db.collection('clients').doc(client.id.toString());
-                        batch.set(ref, client);
-                    });
-                    await batch.commit();
+                    const snapshot = await db.collection('clients').where('phone', '==', phone).limit(1).get();
+                    if (snapshot.empty) return null;
+                    return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id };
                 } catch (e) {
-                    console.error('Save clients error:', e);
+                    console.error("Get client by phone error:", e);
+                    return null;
                 }
             },
 
             addClient: async (client) => {
                 try {
-                    const id = client.id.toString();
-                    await db.collection('clients').doc(id).set(client);
-                    return client;
+                    const ref = await db.collection('clients').add({ ...client, balance: 0, createdAt: new Date().toISOString() });
+                    return { ...client, id: ref.id, balance: 0 };
                 } catch (e) {
                     console.error("Add client error:", e);
                     throw e;
                 }
             },
 
-            loadTransactions: async () => {
+            // --- TRANSACTIONS (COLLECTION) ---
+            loadTransactions: async (clientId = null) => {
                 try {
-                    const snapshot = await db.collection('transactions').orderBy('date', 'desc').get();
+                    let query = db.collection('transactions').orderBy('date', 'desc');
+                    if (clientId) {
+                        query = query.where('clientId', '==', clientId);
+                    }
+                    const snapshot = await query.get();
                     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 } catch (e) {
                     console.error("Load transactions error:", e);
@@ -160,32 +189,19 @@
                 }
             },
 
-            saveTransactions: async (transactions) => {
+            addTransaction: async (tx, currentBalance) => {
                 try {
                     const batch = db.batch();
-                    transactions.forEach(tx => {
-                        const ref = db.collection('transactions').doc(tx.id.toString());
-                        batch.set(ref, tx);
-                    });
-                    await batch.commit();
-                } catch (e) {
-                    console.error('Save transactions error:', e);
-                }
-            },
-
-            addTransaction: async (tx, client) => {
-                try {
-                    const batch = db.batch();
-
-                    // Add transaction
-                    const txRef = db.collection('transactions').doc(tx.id.toString());
+                    const txId = Date.now().toString();
+                    const txRef = db.collection('transactions').doc(txId);
                     batch.set(txRef, tx);
 
-                    // Update client balance
-                    const clientRef = db.collection('clients').doc(client.id.toString());
-                    batch.update(clientRef, { balance: client.balance });
+                    const clientRef = db.collection('clients').doc(tx.clientId);
+                    const newBalance = tx.type === 'DEPOSIT' ? currentBalance + tx.amount : currentBalance - tx.amount;
+                    batch.update(clientRef, { balance: newBalance });
 
                     await batch.commit();
+                    return { ...tx, id: txId, newBalance };
                 } catch (e) {
                     console.error("Add transaction error:", e);
                     throw e;
@@ -801,7 +817,8 @@
         const App = () => {
             const [session, setSession] = useState('loading');
             const [currentUser, setCurrentUser] = useState(null);
-            const [appData, setAppData] = useState(null);
+            const [settings, setSettings] = useState(null);
+            const [staff, setStaff] = useState([]);
             const [clients, setClients] = useState([]);
             const [transactions, setTransactions] = useState([]);
             const [isLoading, setIsLoading] = useState(false);
@@ -810,11 +827,11 @@
                 const initApp = async () => {
                     await CloudStorage.init();
                     try {
-                        const data = await CloudStorage.loadApp();
-                        setAppData(data);
+                        const data = await CloudStorage.loadSettings();
+                        setSettings(data);
                         setSession('auth');
                     } catch (e) {
-                        setAppData({ staff: [], businessName: 'Yomola Global', adminPin: null });
+                        setSettings({ businessName: 'Yomola Global', adminPin: null });
                         setSession('auth');
                     }
                 };
@@ -825,15 +842,15 @@
                 if (window.lucide) window.lucide.createIcons();
             }, [session, currentUser, clients]);
 
-            const loadData = async () => {
+            const loadAdminData = async () => {
                 setIsLoading(true);
                 try {
-                    const [settings, cls, txs] = await Promise.all([
-                        CloudStorage.loadApp(),
+                    const [stf, cls, txs] = await Promise.all([
+                        CloudStorage.loadStaff(),
                         CloudStorage.loadClients(),
                         CloudStorage.loadTransactions()
                     ]);
-                    setAppData(settings);
+                    setStaff(stf);
                     setClients(cls);
                     setTransactions(txs);
                 } finally {
@@ -843,88 +860,93 @@
 
             const handleLogin = async (creds) => {
                 setIsLoading(true);
-                const latestApp = await CloudStorage.loadApp();
-                const latestClients = await CloudStorage.loadClients();
+                try {
+                    const latestSettings = await CloudStorage.loadSettings();
 
-                if (creds.type === 'staff') {
-                    const adminPin = latestApp.adminPin;
-                    if (!adminPin || creds.pin === adminPin) {
-                        if (!adminPin) await CloudStorage.saveApp({ ...latestApp, adminPin: creds.pin });
-                        setCurrentUser({ name: 'Admin', role: 'admin' });
-                        await loadData();
-                        setSession('app');
-                    } else {
-                        const staff = latestApp.staff?.find(s => s.pin === creds.pin);
-                        if (staff) {
-                            setCurrentUser(staff);
-                            await loadData();
+                    if (creds.type === 'staff') {
+                        const adminPin = latestSettings.adminPin;
+                        if (!adminPin || creds.pin === adminPin) {
+                            if (!adminPin) await CloudStorage.saveSettings({ ...latestSettings, adminPin: creds.pin });
+                            setCurrentUser({ name: 'Admin', role: 'admin' });
+                            await loadAdminData();
                             setSession('app');
                         } else {
-                            alert("Invalid PIN");
+                            const staffList = await CloudStorage.loadStaff();
+                            const member = staffList.find(s => s.pin === creds.pin);
+                            if (member) {
+                                setCurrentUser(member);
+                                await loadAdminData();
+                                setSession('app');
+                            } else {
+                                alert("Invalid PIN");
+                            }
+                        }
+                    } else {
+                        const client = await CloudStorage.getClientByPhone(creds.phone);
+                        if (client) {
+                            const txs = await CloudStorage.loadTransactions(client.id);
+                            setCurrentUser(client);
+                            setTransactions(txs);
+                            setSession('client');
+                        } else {
+                            alert("Phone number not found.");
                         }
                     }
-                } else {
-                    const client = latestClients.find(c => c.phone === creds.phone);
-                    if (client) {
-                        setCurrentUser(client);
-                        await loadData();
-                        setSession('client');
-                    } else {
-                        alert("Phone not found.");
-                    }
+                } catch (e) {
+                    console.error("Login flow error:", e);
+                    alert("System error during login.");
+                } finally {
+                    setIsLoading(false);
                 }
-                setIsLoading(false);
             };
 
             const handleLogout = () => {
                 setSession('auth');
                 setCurrentUser(null);
+                setStaff([]);
                 setClients([]);
                 setTransactions([]);
             };
 
             const crud = {
-                addStaff: async (staff) => {
-                    const updated = { ...appData, staff: [...(appData.staff || []), { ...staff, id: Date.now() }] };
-                    await CloudStorage.saveApp(updated);
-                    setAppData(updated);
+                addStaff: async (s) => {
+                    const res = await CloudStorage.addStaff(s);
+                    setStaff(prev => [...prev, res]);
                 },
                 deleteStaff: async (id) => {
-                    const updated = { ...appData, staff: appData.staff.filter(s => s.id !== id) };
-                    await CloudStorage.saveApp(updated);
-                    setAppData(updated);
+                    await CloudStorage.deleteStaff(id);
+                    setStaff(prev => prev.filter(s => s.id !== id));
                 },
                 addClient: async (c) => {
-                    const newClient = { ...c, id: Date.now(), balance: 0 };
-                    await CloudStorage.addClient(newClient);
-                    setClients(prev => [...prev, newClient]);
-                    return newClient;
+                    const res = await CloudStorage.addClient(c);
+                    setClients(prev => [...prev, res]);
+                    return res;
                 },
                 addTransaction: async (tx) => {
                     setIsLoading(true);
                     try {
-                        const newTx = { ...tx, id: Date.now(), processedBy: currentUser.name };
                         const client = clients.find(c => c.id === tx.clientId);
-                        const newBal = tx.type === 'DEPOSIT' ? client.balance + parseFloat(tx.amount) : client.balance - parseFloat(tx.amount);
-                        const updatedClient = { ...client, balance: newBal };
+                        const res = await CloudStorage.addTransaction({
+                            ...tx,
+                            processedBy: currentUser.name
+                        }, client.balance);
 
-                        await CloudStorage.addTransaction(newTx, updatedClient);
-
-                        setClients(clients.map(c => c.id === client.id ? updatedClient : c));
-                        setTransactions(prev => [newTx, ...prev]);
-                    } catch (e) {
-                        alert("Error saving transaction. Please try again.");
+                        setClients(prev => prev.map(c => c.id === tx.clientId ? { ...c, balance: res.newBalance } : c));
+                        setTransactions(prev => [res, ...prev]);
                     } finally {
                         setIsLoading(false);
                     }
                 }
             };
 
-            if (isLoading && session !== 'app') return <div className="flex h-screen items-center justify-center text-slate-400">Loading...</div>;
-            if (session === 'auth') return <AuthScreen onLogin={handleLogin} onSetup={(pin) => handleLogin({ type: 'staff', pin })} hasAccount={!!appData?.adminPin} />;
+            if (isLoading && session !== 'app' && session !== 'client') {
+                return <div className="flex h-screen items-center justify-center text-slate-400">Loading...</div>;
+            }
+
+            if (session === 'auth') return <AuthScreen onLogin={handleLogin} onSetup={(pin) => handleLogin({ type: 'staff', pin })} hasAccount={!!settings?.adminPin} />;
             if (session === 'client') return <ClientPortal client={currentUser} transactions={transactions} onLogout={handleLogout} />;
 
-            return <DashboardRouter currentUser={currentUser} appData={appData} clients={clients} transactions={transactions} crud={crud} onLogout={handleLogout} />;
+            return <DashboardRouter currentUser={currentUser} appData={{ ...settings, staff }} clients={clients} transactions={transactions} crud={crud} onLogout={handleLogout} />;
         };
 
         const DashboardRouter = ({ currentUser, appData, clients, transactions, crud, onLogout }) => {
