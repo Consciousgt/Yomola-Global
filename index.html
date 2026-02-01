@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yomola Global - Contribution Agency</title>
+    <title>Yomola Global - Save for the Future</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -12,20 +12,18 @@
             theme: {
                 extend: {
                     colors: {
-                        brand: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            900: '#0c4a6e',
-                        }
+                        brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 900: '#0c4a6e' }
                     }
                 }
             }
         }
     </script>
-    <!-- Libraries -->
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Space+Grotesk:wght@300;500;700&display=swap"
+        rel="stylesheet">
+
+    <!-- UI Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -33,12 +31,21 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- Firebase SDK (Compat Version for ease of migration) -->
+    <!-- Firebase SDK (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-    <script>
-        // Firebase Configuration
+    <!-- App Styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- FIREBASE INITIALIZATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyCXm7IybpnE17zdXnbo7OdD32KSTXKqmSY",
             authDomain: "yomola-global-1f552.firebaseapp.com",
@@ -49,644 +56,1237 @@
             measurementId: "G-LTJ10SLL4Y"
         };
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const db = firebase.firestore();
-    </script>
 
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+        // --- UTILS ---
+        let currentCurrency = '₦';
+        const formatMoney = (amount) => currentCurrency + (amount || 0).toLocaleString();
+        const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString();
 
-        body {
-            font-family: 'Outfit', sans-serif;
-        }
-
-        .animate-fade-in {
-            animation: fadeIn 0.4s ease-out;
-        }
-
-        .animate-bounce-in {
-            animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes bounceIn {
-            0% {
-                opacity: 0;
-                transform: scale(0.9);
-            }
-
-            70% {
-                opacity: 1;
-                transform: scale(1.02);
-            }
-
-            100% {
-                transform: scale(1);
-            }
-        }
-    </style>
-</head>
-
-<body class="bg-slate-50 text-slate-900 antialiased overflow-hidden">
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
-
-        // --- CLOUD STORAGE SERVICE (FIREBASE) ---
+        // --- DATABASE SERVICE ---
         const CloudStorage = {
-            isReady: false,
-
-            init: async () => {
-                try {
-                    CloudStorage.isReady = typeof firebase !== 'undefined';
-                    return CloudStorage.isReady;
-                } catch (e) {
-                    console.error("Firebase init check failed", e);
-                    return false;
-                }
-            },
-
             loadSettings: async () => {
                 try {
                     const doc = await db.collection('app').doc('settings').get();
-                    if (doc.exists) {
-                        return doc.data();
-                    } else {
-                        const defaultSettings = { businessName: 'Yomola Global', adminPin: null };
-                        await db.collection('app').doc('settings').set(defaultSettings);
-                        return defaultSettings;
-                    }
-                } catch (e) {
-                    console.error("Load settings error:", e);
-                    return { businessName: 'Yomola Global', adminPin: null };
-                }
+                    if (doc.exists) return doc.data();
+                    const defaultSettings = {
+                        businessName: 'Yomola Global',
+                        adminPin: '0000',
+                        theme: 'dark',
+                        currency: 'NGN',
+                        maintenanceMode: false,
+                        systemAlert: ''
+                    };
+                    await db.collection('app').doc('settings').set(defaultSettings);
+                    return defaultSettings;
+                } catch (e) { return { businessName: 'Yomola Global', adminPin: '0000', theme: 'dark', currency: 'NGN' }; }
             },
-
-            saveSettings: async (data) => {
-                try {
-                    await db.collection('app').doc('settings').set(data, { merge: true });
-                } catch (e) {
-                    console.error('Save settings error:', e);
-                }
+            updateSettings: async (settings) => {
+                await db.collection('app').doc('settings').update(settings);
             },
-
-            loadStaff: async () => {
-                try {
-                    const snapshot = await db.collection('staff').get();
-                    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                } catch (e) {
-                    console.error("Load staff error:", e);
-                    return [];
-                }
-            },
-
-            addStaff: async (staff) => {
-                try {
-                    const ref = await db.collection('staff').add({ ...staff, createdAt: new Date().toISOString() });
-                    return { ...staff, id: ref.id };
-                } catch (e) {
-                    console.error("Add staff error:", e);
-                    throw e;
-                }
-            },
-
-            deleteStaff: async (id) => {
-                try {
-                    await db.collection('staff').doc(id).delete();
-                } catch (e) {
-                    console.error("Delete staff error:", e);
-                }
-            },
-
             loadClients: async () => {
-                try {
-                    const snapshot = await db.collection('clients').get();
-                    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                } catch (e) {
-                    console.error("Load clients error:", e);
-                    return [];
-                }
+                const snapshot = await db.collection('clients').orderBy('name').get();
+                return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
             },
-
+            addClient: async (clientData) => {
+                const docRef = await db.collection('clients').add({
+                    ...clientData,
+                    balance: 0,
+                    passwordCreated: false,
+                    createdAt: new Date().toISOString()
+                });
+                return { id: docRef.id, ...clientData };
+            },
+            updateClient: async (clientId, data) => {
+                await db.collection('clients').doc(clientId).update(data);
+            },
             getClientByPhone: async (phone) => {
-                try {
-                    const snapshot = await db.collection('clients').where('phone', '==', phone).limit(1).get();
-                    if (snapshot.empty) return null;
-                    return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id };
-                } catch (e) {
-                    console.error("Get client by phone error:", e);
-                    return null;
-                }
+                const snapshot = await db.collection('clients').where('phone', '==', phone).limit(1).get();
+                if (snapshot.empty) return null;
+                return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id };
             },
-
-            addClient: async (client) => {
-                try {
-                    const ref = await db.collection('clients').add({ ...client, balance: 0, createdAt: new Date().toISOString() });
-                    return { ...client, id: ref.id, balance: 0 };
-                } catch (e) {
-                    console.error("Add client error:", e);
-                    throw e;
-                }
+            loadStaff: async () => {
+                const snapshot = await db.collection('staff').orderBy('name').get();
+                return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
             },
-
-            deleteClient: async (id) => {
-                try {
-                    const batch = db.batch();
-                    const clientRef = db.collection('clients').doc(id);
-                    batch.delete(clientRef);
-                    const txSnapshot = await db.collection('transactions').where('clientId', '==', id).get();
-                    txSnapshot.docs.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
-                    await batch.commit();
-                } catch (e) {
-                    console.error("Delete client error:", e);
-                    throw e;
-                }
+            addStaff: async (staffData) => {
+                const docRef = await db.collection('staff').add({
+                    ...staffData,
+                    createdAt: new Date().toISOString()
+                });
+                return { id: docRef.id, ...staffData };
             },
-
+            deleteStaff: async (staffId) => {
+                await db.collection('staff').doc(staffId).delete();
+            },
+            getStaffByPin: async (pin) => {
+                const snapshot = await db.collection('staff').where('pin', '==', pin).limit(1).get();
+                if (snapshot.empty) return null;
+                return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id };
+            },
+            updateClientPassword: async (clientId, password, email) => {
+                await db.collection('clients').doc(clientId).update({
+                    password,
+                    email,
+                    passwordCreated: true
+                });
+            },
             loadTransactions: async (clientId = null) => {
-                try {
-                    let query = db.collection('transactions').orderBy('date', 'desc');
-                    if (clientId) {
-                        query = query.where('clientId', '==', clientId);
-                    }
-                    const snapshot = await query.get();
-                    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                } catch (e) {
-                    console.error("Load transactions error:", e);
-                    return [];
-                }
+                let query = db.collection('transactions').orderBy('date', 'desc');
+                if (clientId) query = query.where('clientId', '==', clientId);
+                const snapshot = await query.get();
+                return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
             },
-
             addTransaction: async (tx, currentBalance) => {
-                try {
-                    const batch = db.batch();
-                    const txId = Date.now().toString();
-                    const txRef = db.collection('transactions').doc(txId);
-                    batch.set(txRef, tx);
-                    const clientRef = db.collection('clients').doc(tx.clientId);
-                    const newBalance = tx.type === 'DEPOSIT' ? currentBalance + tx.amount : currentBalance - tx.amount;
-                    batch.update(clientRef, { balance: newBalance });
-                    await batch.commit();
-                    return { ...tx, id: txId, newBalance };
-                } catch (e) {
-                    console.error("Add transaction error:", e);
-                    throw e;
-                }
+                const batch = db.batch();
+                const txId = Date.now().toString();
+                const txRef = db.collection('transactions').doc(txId);
+                batch.set(txRef, tx);
+                const clientRef = db.collection('clients').doc(tx.clientId);
+                const newBalance = tx.type === 'DEPOSIT' ? (currentBalance + tx.amount) : (currentBalance - tx.amount);
+                batch.update(clientRef, { balance: newBalance });
+                await batch.commit();
             }
         };
 
-        const formatMoney = (amount) => '₦' + (amount || 0).toLocaleString();
-        const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString();
+        // --- REPORT GENERATOR ---
+        const ReportGenerator = {
+            generateClientStatement: (client, transactions, businessName) => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const primaryColor = [37, 99, 235]; // #2563eb
 
-        const AuthScreen = ({ onLogin, onSetup, hasAccount }) => {
-            const [mode, setMode] = useState('staff');
-            const [staffName, setStaffName] = useState('');
-            const [password, setPassword] = useState('');
+                // Header
+                doc.setFillColor(...primaryColor);
+                doc.rect(0, 0, 210, 40, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(24);
+                doc.setFont('helvetica', 'bold');
+                doc.text(businessName || 'Yomola Global', 15, 25);
+                doc.setFontSize(10);
+                doc.text('STATEMENT OF ACCOUNT', 15, 33);
+
+                // Client Info Info Box
+                doc.setFillColor(245, 250, 255);
+                doc.rect(15, 50, 180, 40, 'F');
+                doc.setTextColor(...primaryColor);
+                doc.setFontSize(12);
+                doc.text('CLIENT DETAILS', 25, 60);
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Name: ${client.name}`, 25, 70);
+                doc.text(`Phone: ${client.phone}`, 25, 76);
+                doc.text(`Wallet ID: ${client.id}`, 25, 82);
+
+                // Balance Box
+                doc.setFillColor(37, 99, 235);
+                doc.rect(130, 50, 65, 40, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(10);
+                doc.text('CURRENT BALANCE', 135, 65);
+                doc.setFontSize(18);
+                doc.setFont('helvetica', 'bold');
+                doc.text(formatMoney(client.balance), 135, 78);
+
+                // Table
+                const tableData = transactions.map(t => [
+                    formatDate(t.date),
+                    t.type,
+                    t.method,
+                    formatMoney(t.amount),
+                    t.recordedBy || 'System'
+                ]);
+
+                doc.autoTable({
+                    startY: 100,
+                    head: [['Date', 'Type', 'Method', 'Amount', 'Officer']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
+                    alternateRowStyles: { fillColor: [249, 250, 251] },
+                    margin: { top: 100 }
+                });
+
+                doc.save(`Statement_${client.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`);
+            },
+
+            generateGeneralCashflow: (transactions, clients, businessName) => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const accentColor = [15, 23, 42]; // #0f172a
+
+                doc.setFillColor(...accentColor);
+                doc.rect(0, 0, 210, 45, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(22);
+                doc.text(businessName || 'Yomola Global', 15, 25);
+                doc.setFontSize(12);
+                doc.text('GENERAL CASHFLOW LEDGER', 15, 35);
+
+                const totalInflow = transactions.filter(t => t.type === 'DEPOSIT').reduce((s, t) => s + t.amount, 0);
+                const totalOutflow = transactions.filter(t => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amount, 0);
+
+                doc.setFontSize(10);
+                doc.text(`Total Inflow: ${formatMoney(totalInflow)}`, 200, 25, { align: 'right' });
+                doc.text(`Total Outflow: ${formatMoney(totalOutflow)}`, 200, 35, { align: 'right' });
+
+                const tableData = transactions.map(t => [
+                    formatDate(t.date),
+                    clients.find(c => c.id === t.clientId)?.name || 'Unknown',
+                    t.type,
+                    formatMoney(t.amount),
+                    t.recordedBy || 'System'
+                ]);
+
+                doc.autoTable({
+                    startY: 55,
+                    head: [['Date', 'Client', 'Type', 'Amount', 'Recorded By']],
+                    body: tableData,
+                    theme: 'grid',
+                    headStyles: { fillColor: accentColor, textColor: 255 },
+                    styles: { fontSize: 8 }
+                });
+
+                doc.save(`General_Cashflow_${Date.now()}.pdf`);
+            },
+
+            exportToExcel: (transactions, clients) => {
+                const headers = ['Date', 'Client Name', 'Type', 'Amount', 'Method', 'Officer'];
+                const rows = transactions.map(t => [
+                    formatDate(t.date),
+                    clients.find(c => c.id === t.clientId)?.name || 'Unknown',
+                    t.type,
+                    t.amount,
+                    t.method,
+                    t.recordedBy || 'System'
+                ]);
+
+                const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `Cashflow_Export_${Date.now()}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        };
+
+        // --- UI COMPONENTS ---
+        const Icon = ({ name, className = "w-5 h-5" }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const Card = ({ children, className = "" }) => (
+            <div className={`glass glass-card p-6 rounded-2xl ${className}`}>{children}</div>
+        );
+
+        const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, icon }) => {
+            const variants = {
+                primary: "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40",
+                secondary: "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700",
+                danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/40",
+                success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40",
+            };
+            return (
+                <button disabled={disabled} onClick={onClick} className={`px-6 py-3 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 ${variants[variant]} ${className}`}>
+                    {icon && <Icon name={icon} />}
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({ label, type = "text", value, onChange, placeholder, maxLength, icon, name, required = false, defaultValue }) => (
+            <div className="space-y-2">
+                {label && <label className="block text-sm font-medium text-gray-400">{label}</label>}
+                <div className="relative">
+                    {icon && <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Icon name={icon} /></div>}
+                    <input defaultValue={defaultValue} name={name} type={type} value={value} onChange={onChange} placeholder={placeholder} maxLength={maxLength} required={required}
+                        className={`w-full bg-gray-800/50 border border-white/10 rounded-xl py-3 ${icon ? 'pl-12' : 'pl-4'} pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-white placeholder-gray-600 transition-all`}
+                    />
+                </div>
+            </div>
+        );
+
+        // --- AUTH SCREEN ---
+        const AuthScreen = ({ onLoginSuccess, onBack, forceStep }) => {
+            const [step, setStep] = useState(forceStep || 'phone');
             const [phone, setPhone] = useState('');
+            const [password, setPassword] = useState('');
+            const [confirmPassword, setConfirmPassword] = useState('');
+            const [email, setEmail] = useState('');
+            const [adminKey, setAdminKey] = useState('');
             const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [userContext, setUserContext] = useState(null);
 
-            const handleSubmit = (e) => {
+            useEffect(() => {
+                if (forceStep) setStep(forceStep);
+                setError('');
+            }, [forceStep]);
+
+            const handlePhoneSubmit = async (e) => {
                 e.preventDefault();
                 setError('');
-                if (mode === 'staff') {
-                    if (!staffName || !password) return setError("Name and password required");
-                    if (password.length < 4) return setError("Password must be at least 4 characters");
-                    hasAccount ? onLogin({ type: 'staff', name: staffName, password }) : onSetup({ name: staffName, password });
+                if (phone.length < 10) return setError("Enter a valid phone number");
+                setLoading(true);
+                const client = await CloudStorage.getClientByPhone(phone);
+                setLoading(false);
+                if (client) {
+                    setUserContext(client);
+                    client.passwordCreated ? setStep('login') : setStep('create');
                 } else {
-                    if (phone.length < 10) return setError("Enter a valid phone number");
-                    onLogin({ type: 'client', phone });
+                    setError("Account not found. Please contact Admin.");
+                }
+            };
+
+            const handleCreatePassword = async (e) => {
+                e.preventDefault();
+                setError('');
+                if (password.length !== 4) return setError("PIN must be 4 characters");
+                if (password !== confirmPassword) return setError("PINs do not match");
+                if (!email.includes('@')) return setError("Valid email required");
+
+                setLoading(true);
+                try {
+                    await CloudStorage.updateClientPassword(userContext.id, password, email);
+                    onLoginSuccess({ ...userContext, role: 'client', password, email });
+                } catch (e) { setError("Setup failed"); }
+                setLoading(false);
+            };
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (password === userContext.password) onLoginSuccess({ ...userContext, role: 'client' });
+                else setError("Incorrect PIN");
+            };
+
+            const handleAdminLogin = async (e) => {
+                e.preventDefault();
+                const s = await CloudStorage.loadSettings();
+                if (adminKey === s.adminPin) {
+                    onLoginSuccess({ name: 'System Admin', role: 'admin' });
+                    return;
+                }
+                const staff = await CloudStorage.getStaffByPin(adminKey);
+                if (staff) {
+                    onLoginSuccess({ ...staff, role: 'staff' });
+                } else {
+                    setError("Invalid Administrative Key");
                 }
             };
 
             return (
-                <div className="flex items-center justify-center h-screen bg-brand-900 text-white px-4">
-                    <div className="bg-white text-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-sm">
-                        <div className="text-center mb-6">
-                            <h1 className="text-3xl font-bold text-brand-900">Yomola Global</h1>
-                            <p className="text-slate-500 mt-2">Secure Access Portal</p>
-                        </div>
-                        {hasAccount && (
-                            <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
-                                <button onClick={() => { setMode('staff'); setError(''); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${mode === 'staff' ? 'bg-white shadow text-brand-600' : 'text-slate-400'}`}>Staff Login</button>
-                                <button onClick={() => { setMode('client'); setError(''); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${mode === 'client' ? 'bg-white shadow text-brand-600' : 'text-slate-400'}`}>Client Portal</button>
-                            </div>
-                        )}
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {mode === 'staff' ? (
-                                <>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">{hasAccount ? 'Staff Name' : 'Admin Name'}</label>
-                                        <input type="text" value={staffName} onChange={e => { setStaffName(e.target.value); setError(''); }} className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" placeholder="Enter your name" autoFocus />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">{hasAccount ? 'Password' : 'Create Admin Password'}</label>
-                                        <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" placeholder="Enter password" />
-                                    </div>
-                                </>
-                            ) : (
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Enter Mobile Number</label>
-                                    <input type="tel" value={phone} onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError(''); }} className="w-full text-center p-4 border rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono text-xl" placeholder="080..." autoFocus maxLength={15} />
+                <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4 auth-container">
+                    <div className="w-full max-w-md auth-form">
+                        <Card className="p-10 border-white/10 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-3xl rounded-full tracking-tighter"></div>
+                            <div className="mb-10 text-center">
+                                <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20">
+                                    <Icon name="shield-check" className="w-8 h-8" />
                                 </div>
+                                <h2 className="text-3xl font-black text-white tracking-tight">Security Portal</h2>
+                                <p className="text-gray-500 mt-2 font-medium">Verify your identity to continue</p>
+                            </div>
+
+                            {error && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl font-bold flex items-center gap-2 animate-shake"><Icon name="alert-circle" className="w-4 h-4" /> {error}</div>}
+
+                            {step === 'phone' && (
+                                <form onSubmit={handlePhoneSubmit} className="space-y-6">
+                                    <Input label="Phone Number" icon="phone" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="080..." maxLength={11} />
+                                    <Button className="w-full" disabled={loading}>{loading ? 'Verifying...' : 'Continue'}</Button>
+                                </form>
                             )}
-                            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                            <button className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold text-lg hover:bg-brand-700 transition shadow-lg shadow-brand-200">{hasAccount ? (mode === 'staff' ? 'Login to Dashboard' : 'View My Dashboard') : 'Initialize System'}</button>
-                        </form>
+                            {step === 'create' && (
+                                <form onSubmit={handleCreatePassword} className="space-y-4">
+                                    <p className="text-sm text-blue-400 bg-blue-500/10 p-3 rounded-lg">Welcome! Please create a secure 4-digit PIN for your account.</p>
+                                    <Input type="password" label="Create 4-Digit PIN" icon="lock" value={password} onChange={e => setPassword(e.target.value)} maxLength={4} />
+                                    <Input type="password" label="Confirm PIN" icon="check-circle" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} maxLength={4} />
+                                    <Input type="email" label="Recovery Email" icon="mail" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+                                    <Button className="w-full" variant="success">Initialize Account</Button>
+                                </form>
+                            )}
+                            {step === 'login' && (
+                                <form onSubmit={handleLogin} className="space-y-6">
+                                    <p className="text-gray-300">Welcome, <span className="text-white font-bold">{userContext.name}</span></p>
+                                    <Input type="password" label="Enter PIN" icon="key" value={password} onChange={e => setPassword(e.target.value)} maxLength={4} />
+                                    <Button className="w-full">Unlock Dashboard</Button>
+                                </form>
+                            )}
+                            {step === 'admin' && (
+                                <form onSubmit={handleAdminLogin} className="space-y-6">
+                                    <h2 className="text-xl font-bold text-orange-400 text-center">Administrative Access</h2>
+                                    <Input type="password" label="4-Digit Portal Key" icon="shield" value={adminKey} onChange={e => setAdminKey(e.target.value)} maxLength={4} />
+                                    <Button className="w-full" variant="danger">Access Terminal</Button>
+                                </form>
+                            )}
+                            <button onClick={onBack} className="w-full text-sm text-gray-500 mt-6 hover:text-gray-300 transition">Back to Selection</button>
+                        </Card>
                     </div>
                 </div>
             );
         };
 
-        const Layout = ({ children, onViewChange, currentView, onLogout, currentUser }) => {
-            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-            return (
-                <div className="flex h-screen bg-slate-50 text-slate-800">
-                    {isMobileMenuOpen && (<div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>)}
-                    <aside className={`fixed inset-y-0 left-0 z-30 w-64 bg-brand-900 text-white flex flex-col transition-transform duration-300 md:translate-x-0 md:static ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-6 border-b border-brand-800 flex justify-between items-center">
-                            <div><h2 className="text-xl font-bold tracking-wide">Yomola Global</h2><p className="text-xs text-brand-400 mt-1">Contribution Agency</p></div>
-                            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-brand-300 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button>
-                        </div>
-                        <nav className="flex-1 p-4 space-y-2">
-                            {[
-                                { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
-                                { id: 'clients', label: 'Clients', icon: 'users' },
-                                { id: 'transactions', label: 'Transactions', icon: 'arrow-right-left' },
-                                { id: 'reports', label: 'Reports', icon: 'file-bar-chart' },
-                                { id: 'settings', label: 'Settings', icon: 'settings', adminOnly: true },
-                            ].filter(item => !item.adminOnly || currentUser?.role === 'admin').map(item => (
-                                <button key={item.id} onClick={() => { onViewChange(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${currentView === item.id ? 'bg-brand-700 text-white shadow-lg' : 'text-brand-100 hover:bg-brand-800'}`}>
-                                    <i data-lucide={item.icon} className="w-5 h-5"></i>
-                                    <span className="font-medium">{item.label}</span>
-                                </button>
-                            ))}
-                        </nav>
-                        <div className="p-4 border-t border-brand-800">
-                            <div className="mb-4 px-2"><div className="text-xs text-brand-400 uppercase font-bold">Logged in as</div><div className="font-bold text-white truncate">{currentUser?.name || 'Admin'}</div></div>
-                            <button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-brand-300 hover:text-white transition"><i data-lucide="log-out" className="w-5 h-5"></i> Logout</button>
-                        </div>
-                    </aside>
-                    <main className="flex-1 flex flex-col h-full overflow-hidden w-full">
-                        <header className="bg-white px-4 md:px-8 py-4 shadow-sm z-10 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"><i data-lucide="menu" className="w-6 h-6"></i></button>
-                                <h2 className="text-xl font-bold text-slate-800 capitalize hidden md:block">{currentView}</h2>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="hidden md:block text-right"><p className="text-sm font-bold text-slate-700">{currentUser?.name}</p><p className="text-xs text-slate-500 uppercase">{currentUser?.role || 'Staff'}</p></div>
-                                <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center font-bold text-lg border-2 border-brand-50">{currentUser?.name?.charAt(0) || 'A'}</div>
-                            </div>
-                        </header>
-                        <div className="flex-1 overflow-auto p-4 md:p-8">{children}</div>
-                    </main>
-                </div>
-            );
-        };
+        // --- DASHBOARD ---
+        const Dashboard = ({ user, onLogout }) => {
+            const isFullAdmin = user.role === 'admin';
+            const isStaff = user.role === 'staff';
+            const isAdminView = isFullAdmin || isStaff;
 
-        const ClientManager = ({ clients, onAddClient, onSelectClient, onDeleteClient }) => {
-            const [showForm, setShowForm] = useState(false);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', plan: 'Daily', address: '' });
-            const [deleteConfirm, setDeleteConfirm] = useState(null);
-            const filteredClients = clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm));
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                onAddClient({ ...newClient });
-                setNewClient({ name: '', phone: '', email: '', plan: 'Daily', address: '' });
-                setShowForm(false);
+            const [view, setView] = useState('home');
+            const [transactions, setTransactions] = useState([]);
+            const [clients, setClients] = useState([]);
+            const [staff, setStaff] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [modal, setModal] = useState(null); // { type, data }
+            const [settings, setSettings] = useState({
+                businessName: 'Yomola Global',
+                adminPin: '0000',
+                theme: 'dark',
+                currency: 'NGN',
+                maintenanceMode: false,
+                systemAlert: ''
+            });
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+
+            const refreshData = async () => {
+                setLoading(true);
+                const s = await CloudStorage.loadSettings();
+                setSettings(s);
+
+                // Update Global Currency
+                const currencySymbols = { 'NGN': '₦', 'USD': '$', 'EUR': '€', 'GBP': '£' };
+                currentCurrency = currencySymbols[s.currency] || '₦';
+
+                // Update Theme
+                document.body.classList.toggle('light-theme', s.theme === 'light');
+
+                if (isAdminView) {
+                    const [cls, txs, stf] = await Promise.all([
+                        CloudStorage.loadClients(),
+                        CloudStorage.loadTransactions(),
+                        CloudStorage.loadStaff()
+                    ]);
+                    setClients(cls); setTransactions(txs); setStaff(stf);
+                } else {
+                    const txs = await CloudStorage.loadTransactions(user.id);
+                    setTransactions(txs);
+                }
+                setLoading(false);
             };
-            return (
-                <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="relative w-full md:w-96"><input type="text" placeholder="Search clients..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" /><i data-lucide="search" className="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i></div>
-                        <button onClick={() => setShowForm(true)} className="w-full md:w-auto bg-brand-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-brand-700 flex items-center justify-center gap-2"><i data-lucide="user-plus" className="w-4 h-4"></i> Add Client</button>
-                    </div>
-                    {showForm && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-bounce-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">Add New Client</h3><button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button></div><form onSubmit={handleSubmit} className="space-y-4"><div className="grid grid-cols-2 gap-4"><div><label className="text-sm font-medium block mb-1">Full Name</label><input required value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} className="w-full border p-2 rounded-lg" /></div><div><label className="text-sm font-medium block mb-1">Phone</label><input required type="tel" value={newClient.phone} onChange={e => setNewClient({ ...newClient, phone: e.target.value })} className="w-full border p-2 rounded-lg" /></div></div><div><label className="text-sm font-medium block mb-1">Email (Optional)</label><input type="email" value={newClient.email} onChange={e => setNewClient({ ...newClient, email: e.target.value })} className="w-full border p-2 rounded-lg" /></div><div><label className="text-sm font-medium block mb-1">Address</label><input value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} className="w-full border p-2 rounded-lg" /></div><div><label className="text-sm font-medium block mb-1">Savings Plan</label><select value={newClient.plan} onChange={e => setNewClient({ ...newClient, plan: e.target.value })} className="w-full border p-2 rounded-lg"><option>Daily</option><option>Weekly</option><option>Monthly</option><option>Irregular</option></select></div><button className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4">Register Client</button></form></div></div>)}
-                    {deleteConfirm && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"><h3 className="text-xl font-bold mb-4 text-red-600">Delete Client</h3><p className="text-slate-600 mb-6">Are you sure you want to delete <strong>{deleteConfirm.name}</strong>? This will also delete all their transactions.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 bg-slate-200 text-slate-700 rounded-lg font-bold hover:bg-slate-300">Cancel</button><button onClick={async () => { await onDeleteClient(deleteConfirm.id); setDeleteConfirm(null); }} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">Delete</button></div></div></div>)}
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-100 overflow-x-auto"><table className="w-full text-left text-sm min-w-[600px]"><thead className="bg-slate-50 text-slate-500 font-medium"><tr><th className="p-4">Name</th><th className="p-4">Plan</th><th className="p-4">Phone</th><th className="p-4 text-right">Balance</th><th className="p-4 text-center">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredClients.map(client => (<tr key={client.id} className="hover:bg-slate-50 transition"><td className="p-4 font-medium text-slate-900">{client.name}</td><td className="p-4"><span className="px-2 py-1 bg-brand-50 text-brand-700 rounded text-xs font-bold">{client.plan}</span></td><td className="p-4 text-slate-500">{client.phone}</td><td className="p-4 text-right font-bold text-slate-900">{formatMoney(client.balance)}</td><td className="p-4 text-center"><div className="flex justify-center gap-2"><button onClick={() => onSelectClient(client.id)} className="text-brand-600 hover:text-brand-800 font-medium text-xs px-2 py-1 hover:bg-brand-50 rounded">View</button><button onClick={() => setDeleteConfirm(client)} className="text-red-600 hover:text-red-800 font-medium text-xs px-2 py-1 hover:bg-red-50 rounded">Delete</button></div></td></tr>))}{filteredClients.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-slate-400">No clients found</td></tr>}</tbody></table></div>
-                </div>
-            );
-        };
 
-        const DashboardHome = ({ clients, transactions }) => {
+            useEffect(() => { refreshData(); }, [user]);
+
+            // Sync theme when settings change locally
+            useEffect(() => {
+                document.body.classList.toggle('light-theme', settings.theme === 'light');
+                const currencySymbols = { 'NGN': '₦', 'USD': '$', 'EUR': '€', 'GBP': '£' };
+                currentCurrency = currencySymbols[settings.currency] || '₦';
+            }, [settings.theme, settings.currency]);
+
+            const balance = isAdminView ? clients.reduce((s, c) => s + (c.balance || 0), 0) : user.balance;
+
             const stats = useMemo(() => {
-                const totalClients = clients.length;
-                const totalHoldings = clients.reduce((sum, c) => sum + (c.balance || 0), 0);
-                const todayStr = new Date().toISOString().slice(0, 10);
-                const todaysTx = transactions.filter(t => t.date === todayStr && t.type === 'DEPOSIT');
-                const todaysVolume = todaysTx.reduce((sum, t) => sum + t.amount, 0);
-                return { totalClients, totalHoldings, todaysVolume };
-            }, [clients, transactions]);
-            return (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-brand-500"><p className="text-slate-500 text-sm font-medium uppercase">Total Holdings</p><p className="text-3xl font-bold text-slate-800 mt-2">{formatMoney(stats.totalHoldings)}</p></div>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-emerald-500"><p className="text-slate-500 text-sm font-medium uppercase">Today's Deposits</p><p className="text-3xl font-bold text-slate-800 mt-2">{formatMoney(stats.todaysVolume)}</p></div>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-purple-500"><p className="text-slate-500 text-sm font-medium uppercase">Active Clients</p><p className="text-3xl font-bold text-slate-800 mt-2">{stats.totalClients}</p></div>
-                    </div>
-                </div>
-            );
-        };
+                if (!isAdminView) return null;
+                const totalHoldings = clients.reduce((s, c) => s + (c.balance || 0), 0);
+                const today = new Date().toISOString().split('T')[0];
+                const todayDeposits = transactions
+                    .filter(t => t.type === 'DEPOSIT' && t.date.startsWith(today))
+                    .reduce((s, t) => s + t.amount, 0);
+                const activeClients = clients.length;
+                return { totalHoldings, todayDeposits, activeClients };
+            }, [clients, transactions, isAdminView]);
 
-        const ClientDetail = ({ client, transactions, onBack, onTransaction }) => {
-            const [showTxForm, setShowTxForm] = useState(false);
-            const [txData, setTxData] = useState({ type: 'DEPOSIT', amount: '', method: 'Cash', date: new Date().toISOString().slice(0, 10) });
-            const [dateRange, setDateRange] = useState({ start: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10), end: new Date().toISOString().slice(0, 10) });
-            const clientTx = transactions.filter(t => t.clientId === client.id).sort((a, b) => new Date(b.date) - new Date(a.date));
-            const filteredTx = clientTx.filter(t => t.date >= dateRange.start && t.date <= dateRange.end);
-            const handleTxSubmit = (e) => {
-                e.preventDefault();
-                onTransaction({ clientId: client.id, ...txData, amount: parseFloat(txData.amount) });
-                setShowTxForm(false);
-                setTxData({ type: 'DEPOSIT', amount: '', method: 'Cash', date: new Date().toISOString().slice(0, 10) });
+            const handleTransactionSubmit = async (data) => {
+                try {
+                    const tx = {
+                        clientId: data.clientId,
+                        type: data.type,
+                        amount: parseFloat(data.amount),
+                        method: data.method,
+                        date: new Date().toISOString(),
+                        recordedBy: user.name
+                    };
+                    const client = clients.find(c => c.id === tx.clientId);
+                    await CloudStorage.addTransaction(tx, client.balance);
+                    setModal(null);
+                    refreshData();
+                } catch (e) { alert("Transaction failed"); }
             };
-            const downloadStatement = () => {
-                const doc = new window.jspdf.jsPDF();
-                doc.setFillColor(12, 74, 110); doc.rect(0, 0, 210, 40, 'F'); doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.text("Yomola Global", 14, 20); doc.setFontSize(12); doc.text("Contribution Agency", 14, 28);
-                doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text(`Statement of Account`, 14, 55);
-                doc.setFontSize(10); doc.text(`Client: ${client.name}`, 14, 65); doc.text(`Phone: ${client.phone}`, 14, 70); doc.text(`Period: ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`, 14, 75); doc.text(`Generated: ${new Date().toLocaleDateString()}`, 150, 65);
-                const totalDep = filteredTx.filter(t => t.type === 'DEPOSIT').reduce((a, b) => a + b.amount, 0); const totalWith = filteredTx.filter(t => t.type === 'WITHDRAWAL').reduce((a, b) => a + b.amount, 0);
-                doc.setDrawColor(200); doc.rect(130, 80, 70, 25); doc.text(`Total Deposits: ${formatMoney(totalDep)}`, 135, 88); doc.text(`Total Withdrawals: ${formatMoney(totalWith)}`, 135, 95); doc.setFont(undefined, 'bold'); doc.text(`Net Change: ${formatMoney(totalDep - totalWith)}`, 135, 102); doc.setFont(undefined, 'normal');
-                const tableData = filteredTx.map(t => [t.date, t.type, t.method, formatMoney(t.amount)]);
-                doc.autoTable({ startY: 115, head: [['Date', 'Type', 'Method', 'Amount']], body: tableData, theme: 'striped', headStyles: { fillColor: [14, 165, 233] }, });
-                doc.save(`Statement_${client.name}.pdf`);
+
+            const handleAddClient = async (data) => {
+                try {
+                    await CloudStorage.addClient(data);
+                    setModal(null);
+                    refreshData();
+                } catch (e) { alert("Failed to add client"); }
             };
-            return (
-                <div className="space-y-6">
-                    <button onClick={onBack} className="text-slate-500 hover:text-slate-700 flex items-center gap-2 mb-4"><i data-lucide="arrow-left" className="w-4 h-4"></i> Back to Clients</button>
-                    <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div><h2 className="text-3xl font-bold text-slate-800">{client.name}</h2><div className="flex gap-4 mt-2 text-slate-500 text-sm"><span className="flex items-center gap-1"><i data-lucide="phone" className="w-4 h-4"></i> {client.phone}</span><span className="flex items-center gap-1"><i data-lucide="map-pin" className="w-4 h-4"></i> {client.address || 'No Address'}</span></div><div className="mt-4 inline-block bg-brand-50 text-brand-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">{client.plan} Savings Plan</div></div>
-                        <div className="text-right"><p className="text-sm text-slate-400 font-medium uppercase">Current Balance</p><p className="text-5xl font-bold text-brand-600 tracking-tight">{formatMoney(client.balance)}</p><div className="flex gap-2 mt-4 justify-end">
-                            <button onClick={() => { setTxData({ ...txData, type: 'DEPOSIT' }); setShowTxForm(true); }} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-emerald-200 transition">+ Deposit</button>
-                            <button onClick={() => { setTxData({ ...txData, type: 'WITHDRAWAL' }); setShowTxForm(true); }} className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-red-200 transition">- Withdraw</button>
-                        </div></div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4"><h3 className="font-bold text-lg">Transaction History</h3><div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200"><span className="text-xs font-bold text-slate-500 uppercase px-2">Statement Range:</span><input type="date" value={dateRange.start} onChange={e => setDateRange({ ...dateRange, start: e.target.value })} className="text-sm bg-transparent outline-none border-b border-slate-300 focus:border-brand-500" /><span className="text-slate-400">-</span><input type="date" value={dateRange.end} onChange={e => setDateRange({ ...dateRange, end: e.target.value })} className="text-sm bg-transparent outline-none border-b border-slate-300 focus:border-brand-500" /><button onClick={downloadStatement} className="ml-2 bg-brand-600 hover:bg-brand-700 text-white p-2 rounded-lg" title="Download PDF"><i data-lucide="download" className="w-4 h-4"></i></button></div></div>
-                        <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-500 border-b"><tr><th className="p-4">Date</th><th className="p-4">Type</th><th className="p-4">Method</th><th className="p-4 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-50">{clientTx.map(t => (<tr key={t.id} className="hover:bg-slate-50"><td className="p-4 text-slate-500">{t.date}</td><td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${t.type === 'DEPOSIT' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{t.type}</span></td><td className="p-4 text-slate-600">{t.method}</td><td className={`p-4 text-right font-bold ${t.type === 'DEPOSIT' ? 'text-emerald-600' : 'text-red-600'}`}>{t.type === 'DEPOSIT' ? '+' : '-'}{formatMoney(t.amount)}</td></tr>))}{clientTx.length === 0 && <tr><td colSpan="4" className="p-8 text-center text-slate-300">No transactions recorded yet.</td></tr>}</tbody></table>
-                    </div>
-                    {showTxForm && (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100"><h3 className="text-xl font-bold mb-4">{txData.type === 'DEPOSIT' ? 'Record Deposit' : 'Record Withdrawal'}</h3><form onSubmit={handleTxSubmit} className="space-y-4"><div><label className="text-xs font-bold text-slate-500 uppercase">Amount</label><input type="number" required min="1" autoFocus value={txData.amount} onChange={e => setTxData({ ...txData, amount: e.target.value })} className="w-full text-3xl font-bold p-2 border-b-2 border-slate-200 focus:border-brand-500 outline-none" placeholder="0.00" /></div><div className="grid grid-cols-2 gap-4"><div><label className="text-xs font-bold text-slate-500 uppercase">Date</label><input type="date" required value={txData.date} onChange={e => setTxData({ ...txData, date: e.target.value })} className="w-full p-2 bg-slate-50 rounded" /></div><div><label className="text-xs font-bold text-slate-500 uppercase">Method</label><select value={txData.method} onChange={e => setTxData({ ...txData, method: e.target.value })} className="w-full p-2 bg-slate-50 rounded"><option>Cash</option><option>Transfer</option><option>POS</option></select></div></div>{txData.type === 'WITHDRAWAL' && client.balance < txData.amount && (<div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-bold">Warning: Insufficient Funds (Bal: {formatMoney(client.balance)})</div>)}<div className="flex gap-3 pt-4"><button type="button" onClick={() => setShowTxForm(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-lg font-bold">Cancel</button><button className={`flex-1 py-3 text-white rounded-lg font-bold shadow-lg ${txData.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>Confirm</button></div></form></div></div>)}
-                </div>
-            );
-        };
 
-        const ClientPortal = ({ client, transactions, onLogout }) => {
-            const [dateRange, setDateRange] = useState({ start: '', end: '' });
-            const myTx = useMemo(() => transactions.filter(t => t.clientId === client.id).sort((a, b) => new Date(b.date) - new Date(a.date)), [transactions, client.id]);
+            const handleEditClient = async (clientId, data) => {
+                try {
+                    await CloudStorage.updateClient(clientId, data);
+                    setModal(null);
+                    refreshData();
+                } catch (e) { alert("Update failed"); }
+            };
 
-            const filteredTx = useMemo(() => myTx.filter(t => {
-                if (!dateRange.start && !dateRange.end) return true;
-                const d = t.date;
-                const start = dateRange.start || '1900-01-01';
-                const end = dateRange.end || '2100-01-01';
-                return d >= start && d <= end;
-            }), [myTx, dateRange]);
+            const handleAddStaff = async (data) => {
+                try {
+                    await CloudStorage.addStaff(data);
+                    setModal(null);
+                    refreshData();
+                } catch (e) { alert("Failed to add staff"); }
+            };
 
-            const downloadStatement = () => {
-                const doc = new window.jspdf.jsPDF();
-                doc.setFontSize(22); doc.setTextColor(12, 74, 110); doc.text("Yomola Global", 14, 20);
-                doc.setFontSize(10); doc.setTextColor(100); doc.text("Contribution Agency - Account Statement", 14, 28);
+            const handleRevokeStaff = async (staffId) => {
+                if (confirm("Are you sure you want to revoke access?")) {
+                    await CloudStorage.deleteStaff(staffId);
+                    refreshData();
+                }
+            };
 
-                doc.setTextColor(0, 0, 0); doc.setFontSize(12);
-                doc.text(`Client: ${client.name}`, 14, 40);
-                doc.text(`Phone: ${client.phone}`, 14, 46);
-                doc.text(`Balance: ${formatMoney(client.balance)}`, 14, 52);
-                doc.text(`Date Generated: ${new Date().toLocaleString()}`, 14, 58);
-
-                const tableBody = filteredTx.map(t => [t.date, t.type, t.method, formatMoney(t.amount)]);
-                doc.autoTable({
-                    head: [['Date', 'Type', 'Method', 'Amount']],
-                    body: tableBody,
-                    startY: 65,
-                    theme: 'striped',
-                    headStyles: { fillColor: [12, 74, 110] }
-                });
-                doc.save(`statement_${client.name}.pdf`);
+            const handleUpdateSettings = async (newSettings) => {
+                try {
+                    await CloudStorage.updateSettings(newSettings);
+                    setSettings(newSettings);
+                    alert("Settings updated successfully");
+                } catch (e) { alert("Failed to update settings"); }
             };
 
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col">
-                    <div className="bg-brand-900 text-white p-6 shadow-lg flex justify-between items-center">
-                        <div><h1 className="text-xl font-bold">Yomola Global</h1><p className="text-brand-200 text-sm">Welcome, {client.name}</p></div>
-                        <button onClick={onLogout} className="bg-brand-800 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2">
-                            <i data-lucide="log-out" className="w-4 h-4"></i> Logout
-                        </button>
-                    </div>
-                    <div className="flex-1 p-4 max-w-2xl mx-auto w-full space-y-6">
-                        <div className="bg-brand-600 text-white p-6 rounded-2xl shadow-xl transform transition hover:scale-[1.02] duration-300 relative overflow-hidden">
-                            <div className="relative z-10">
-                                <p className="text-brand-200 font-medium uppercase tracking-wider text-xs">Available Savings</p>
-                                <h2 className="text-4xl font-bold mt-2">{formatMoney(client.balance)}</h2>
-                            </div>
-                            <i data-lucide="wallet" className="absolute right-[-20px] bottom-[-20px] w-32 h-32 text-brand-500 opacity-20"></i>
-                        </div>
-                        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-100">
-                            <div className="p-4 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                <h3 className="font-bold text-slate-800">Transaction History</h3>
-                                <div className="flex items-center gap-2">
-                                    <input type="date" className="bg-slate-50 border p-1 rounded text-xs outline-none" onChange={e => setDateRange({ ...dateRange, start: e.target.value })} />
-                                    <span className="text-slate-400">-</span>
-                                    <input type="date" className="bg-slate-50 border p-1 rounded text-xs outline-none" onChange={e => setDateRange({ ...dateRange, end: e.target.value })} />
-                                    <button onClick={downloadStatement} className="bg-brand-600 text-white p-2 rounded-lg hover:bg-brand-700 transition" title="Download Statement">
-                                        <i data-lucide="download" className="w-4 h-4"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="divide-y divide-slate-50 max-h-[500px] overflow-y-auto">
-                                {filteredTx.map(t => (
-                                    <div key={t.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-full ${t.type === 'DEPOSIT' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                                                <i data-lucide={t.type === 'DEPOSIT' ? 'arrow-down-left' : 'arrow-up-right'} className="w-4 h-4"></i>
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-sm text-slate-800">{t.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'}</p>
-                                                <p className="text-xs text-slate-400">{t.date} • {t.method}</p>
-                                            </div>
-                                        </div>
-                                        <span className={`font-bold ${t.type === 'DEPOSIT' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {t.type === 'DEPOSIT' ? '+' : '-'}{formatMoney(t.amount)}
-                                        </span>
-                                    </div>
-                                ))}
-                                {filteredTx.length === 0 && <p className="p-8 text-center text-slate-400 text-sm">No records found for this period.</p>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-
-        const Settings = ({ appData, onAddStaff, onDeleteStaff, onBack }) => {
-            const [newStaff, setNewStaff] = useState({ name: '', password: '', role: 'staff' });
-
-            return (
-                <div className="space-y-6 animate-fade-in">
-                    <button onClick={onBack} className="text-slate-500 hover:text-slate-800 flex items-center gap-2 font-medium">
-                        <i data-lucide="arrow-left" className="w-4 h-4"></i> Back to Dashboard
+                <div className="flex h-screen bg-[#0f172a] overflow-hidden font-['Outfit'] relative">
+                    {/* Mobile Menu Toggle */}
+                    <button
+                        onClick={() => setSidebarOpen(!sidebarOpen)}
+                        className="lg:hidden absolute top-6 right-6 z-50 p-3 bg-blue-600 rounded-xl shadow-lg text-white"
+                    >
+                        <Icon name={sidebarOpen ? "x" : "menu"} />
                     </button>
 
-                    <h2 className="text-2xl font-bold text-slate-800">System Settings</h2>
-
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                            <i data-lucide="cloud" className="w-5 h-5 text-brand-600"></i> Cloud Storage Status
-                        </h3>
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                                <span className="text-emerald-700 font-medium">Connected to Cloud Storage</span>
+                    {/* Sidebar */}
+                    <aside className={`
+                        fixed inset-y-0 left-0 z-40 w-64 glass border-r border-white/10 p-6 flex flex-col gap-8 transition-transform duration-300 transform
+                        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                        lg:relative lg:translate-x-0
+                    `}>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
+                                <Icon name="activity" className="text-white" />
                             </div>
-                            <p className="text-sm text-emerald-600 mt-2">Your data is automatically synced and persisted across sessions.</p>
+                            <span className="font-bold text-xl tracking-tighter text-white">Yomola</span>
                         </div>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                            <i data-lucide="users" className="w-5 h-5 text-brand-600"></i> Staff Management
-                        </h3>
-
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                if (!newStaff.name || !newStaff.password) return alert("All fields required");
-                                onAddStaff(newStaff);
-                                setNewStaff({ name: '', password: '', role: 'staff' });
-                            }}
-                            className="bg-slate-50 p-4 rounded-lg mb-6 flex flex-col md:flex-row gap-4 items-end"
-                        >
-                            <div className="flex-1 w-full">
-                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Staff Name</label>
-                                <input required value={newStaff.name} onChange={e => setNewStaff({ ...newStaff, name: e.target.value })} className="w-full p-2 border rounded text-sm" placeholder="John Doe" />
+                        <nav className="flex-1 space-y-2">
+                            <button onClick={() => { setView('home'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'home' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                <Icon name="layout-dashboard" /> Dashboard
+                            </button>
+                            {isAdminView && (
+                                <>
+                                    <button onClick={() => { setView('clients'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'clients' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                        <Icon name="users" /> Clients
+                                    </button>
+                                    <button onClick={() => { setView('transactions'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'transactions' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                        <Icon name="list" /> Transactions
+                                    </button>
+                                    <button onClick={() => { setView('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'reports' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                        <Icon name="file-text" /> Reports
+                                    </button>
+                                    {isFullAdmin && (
+                                        <>
+                                            <button onClick={() => { setView('staff'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'staff' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                                <Icon name="shield-half" /> Staff
+                                            </button>
+                                            <button onClick={() => { setView('settings'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'settings' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                                <Icon name="settings" /> Settings
+                                            </button>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </nav>
+                        <div className="pt-6 border-t border-white/5">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold shadow-lg shadow-blue-500/10 text-white">
+                                    {user.name.charAt(0)}
+                                </div>
+                                <div className="overflow-hidden">
+                                    <p className="text-sm font-bold truncate text-white">{user.name}</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-widest">{user.role}</p>
+                                </div>
                             </div>
-                            <div className="w-full md:w-48">
-                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Password</label>
-                                <input required type="password" minLength="4" value={newStaff.password} onChange={e => setNewStaff({ ...newStaff, password: e.target.value })} className="w-full p-2 border rounded text-sm" placeholder="••••" />
-                            </div>
-                            <div className="w-full md:w-32">
-                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Role</label>
-                                <select value={newStaff.role} onChange={e => setNewStaff({ ...newStaff, role: e.target.value })} className="w-full p-2 border rounded text-sm">
-                                    <option value="staff">Staff</option>
-                                    <option value="admin">Admin</option>
-                                </select>
-                            </div>
-                            <button className="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-700 w-full md:w-auto self-end">Add Staff</button>
-                        </form>
+                            <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-2 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
+                                <Icon name="log-out" /> Sign Out
+                            </button>
+                        </div>
+                    </aside>
 
-                        <div className="space-y-2">
-                            {appData?.staff && appData.staff.length > 0 ? (
-                                appData.staff.map(s => (
-                                    <div key={s.id} className="flex justify-between items-center p-3 border rounded-lg bg-white hover:shadow-sm transition">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center font-bold text-xs">
-                                                {(s.name || '??').substring(0, 2).toUpperCase()}
+                    {/* Main Content */}
+                    <main className="flex-1 overflow-y-auto p-4 md:p-12 relative">
+                        {settings.systemAlert && (
+                            <div className="mb-8 p-4 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center gap-4 animate-pulse">
+                                <div className="p-2 bg-blue-600 rounded-lg">
+                                    <Icon name="megaphone" className="text-white w-5 h-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">System Broadcast</p>
+                                    <p className="text-white font-bold text-sm md:text-base">{settings.systemAlert}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <header className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                            <div>
+                                <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-2 text-white capitalize">
+                                    {view === 'home' ? 'Central Command' : view}
+                                </h2>
+                                <p className="text-gray-500 text-sm">
+                                    {isStaff ? 'Staff Terminal' : isFullAdmin ? 'System Command Center' : 'Personal Wealth Portal'}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                                <Button variant="secondary" onClick={() => refreshData()} icon="refresh-cw" className="text-xs py-2 whitespace-nowrap">Sync</Button>
+                                <Button variant="danger" onClick={onLogout} icon="log-out" className="text-xs py-2 whitespace-nowrap">Exit</Button>
+                                {isFullAdmin && view === 'staff' && <Button onClick={() => setModal({ type: 'addStaff' })} icon="shield" className="text-xs py-2 whitespace-nowrap">Add Staff</Button>}
+                            </div>
+                        </header>
+
+                        {view === 'home' && (
+                            <div className="space-y-12">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    <Card className="lg:col-span-2 bg-gradient-to-br from-blue-900/40 to-indigo-900/20 border-blue-500/30 relative overflow-hidden backdrop-blur-xl">
+                                        <Icon name="wallet" className="absolute -bottom-10 -right-10 w-64 h-64 text-blue-500/5 rotate-12" />
+                                        <p className="text-sm font-medium text-blue-400 uppercase tracking-[0.2em] mb-4">{isAdminView ? 'Managed Wealth' : 'Personal Savings'}</p>
+                                        <h3 className="text-7xl font-black mb-10 tracking-tighter text-white drop-shadow-2xl">{formatMoney(balance)}</h3>
+                                        <div className="flex gap-4 relative z-10">
+                                            {isAdminView ? (
+                                                <>
+                                                    <Button onClick={() => setModal({ type: 'transaction' })} variant="primary" className="glow scale-105">Record Entry</Button>
+                                                    <Button variant="secondary" className="glass bg-white/5 border-white/10" onClick={() => ReportGenerator.generateGeneralCashflow(transactions, clients, settings.businessName)} icon="file-text">PDF Ledger</Button>
+                                                    <Button variant="secondary" className="glass bg-white/5 border-white/10" onClick={() => ReportGenerator.exportToExcel(transactions, clients)} icon="table">Excel</Button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Button variant="primary" className="glow">Withdrawal Request</Button>
+                                                    <Button variant="secondary" className="glass bg-white/5 border-white/10" onClick={() => ReportGenerator.generateClientStatement(user, transactions, settings.businessName)} icon="download">Statement</Button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </Card>
+                                    <Card className="flex flex-col justify-between border-emerald-500/20 bg-emerald-500/5">
+                                        <div>
+                                            <div className="p-4 bg-emerald-500/20 text-emerald-400 rounded-2xl inline-block mb-6 shadow-2xl shadow-emerald-500/20 animate-pulse">
+                                                <Icon name="trending-up" className="w-8 h-8" />
                                             </div>
+                                            <h4 className="text-2xl font-bold text-white">System Status</h4>
+                                            <p className="text-sm text-gray-400 mt-3 leading-relaxed">Infrastructure is active with 3D encryption and real-time reconciliation enabled.</p>
+                                        </div>
+                                        <div className="pt-6 border-t border-white/5 mt-6 flex justify-between items-center text-xs uppercase tracking-widest text-gray-500 font-bold">
+                                            {!isAdminView && <Button variant="secondary" className="glass border-white/10 py-1 px-3 text-[10px]" onClick={() => ReportGenerator.generateClientStatement(user, transactions, settings.businessName)} icon="download">Statement</Button>}
+                                            <span className="text-emerald-400">Verfied</span>
+                                        </div>
+                                    </Card>
+                                </div>
+
+                                {isAdminView && stats && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <Card className="border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl">
+                                            <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-4">Today's Deposits</p>
+                                            <h4 className="text-3xl font-black text-white">{formatMoney(stats.todayDeposits)}</h4>
+                                            <div className="mt-4 flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                                                <Icon name="clock" className="w-3 h-3" /> Daily Inflow
+                                            </div>
+                                        </Card>
+                                        <Card className="border-indigo-500/20 bg-indigo-500/5 backdrop-blur-xl">
+                                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-4">Active Clients</p>
+                                            <h4 className="text-3xl font-black text-white">{stats.activeClients}</h4>
+                                            <div className="mt-4 flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                                                <Icon name="users" className="w-3 h-3" /> Verified Wallets
+                                            </div>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-3xl font-bold text-white tracking-tight">Recent Activity</h3>
+                                        <button onClick={() => setView('transactions')} className="text-blue-400 text-sm font-bold hover:underline">View All Records</button>
+                                    </div>
+                                    <ActivityList loading={loading} transactions={transactions} isAdminView={isAdminView} />
+                                </div>
+                            </div>
+                        )}
+
+                        {
+                            view === 'clients' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {clients.map(c => (
+                                        <Card key={c.id} className="hover:bg-white/5 transition-colors group">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div className="w-12 h-12 bg-blue-600/10 text-blue-400 rounded-2xl flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform text-white">
+                                                    {c.name.charAt(0)}
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1">Current Balance</p>
+                                                    <p className="text-xl font-bold text-white">{formatMoney(c.balance)}</p>
+                                                </div>
+                                            </div>
+                                            <h4 className="text-lg font-bold text-white truncate">{c.name}</h4>
+                                            <p className="text-sm text-gray-500 mb-6">{c.phone}</p>
+                                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                                <Button variant="secondary" className="text-xs py-2 px-0 glass border-white/5" onClick={() => setModal({ type: 'transaction', data: c })}>Record</Button>
+                                                <Button variant="secondary" className="text-xs py-2 px-0 glass border-white/5" disabled={!isFullAdmin} onClick={() => setModal({ type: 'editClient', data: c })}>Edit Profile</Button>
+                                            </div>
+                                            <Button variant="secondary" className="w-full text-xs py-2 px-0 glass border-white/10 text-blue-400" onClick={() => ReportGenerator.generateClientStatement(c, transactions.filter(t => t.clientId === c.id), settings.businessName)} icon="file-text">Download Statement</Button>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )
+                        }
+
+                        {
+                            view === 'transactions' && (
+                                <Card className="overflow-hidden p-0 border-white/5">
+                                    <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                                        <h3 className="font-bold text-white">Full Transaction Ledger</h3>
+                                        <div className="flex gap-2">
+                                            <Button variant="secondary" className="text-xs py-1" onClick={() => ReportGenerator.exportToExcel(transactions, clients)} icon="table">Export Excel</Button>
+                                            <Button variant="secondary" className="text-xs py-1" onClick={() => ReportGenerator.generateGeneralCashflow(transactions, clients, settings.businessName)} icon="printer">Print PDF</Button>
+                                        </div>
+                                    </div>
+                                    <TransactionTable transactions={transactions} clients={clients} />
+                                </Card>
+                            )
+                        }
+
+                        {
+                            view === 'reports' && (
+                                <div className="space-y-6">
+                                    <Card className="bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border-blue-500/30">
+                                        <div className="flex justify-between items-center">
                                             <div>
-                                                <p className="font-bold text-sm text-slate-900">
-                                                    {s.name || 'Unnamed Staff'}
-                                                    {s.role === 'admin' && <span className="text-xs text-brand-600 bg-brand-50 px-1 rounded ml-1">ADMIN</span>}
-                                                </p>
+                                                <h3 className="text-2xl font-bold text-white mb-2">Statement Generator</h3>
+                                                <p className="text-gray-400 text-sm">Download or print full financial statements for your records.</p>
+                                            </div>
+                                            <div className="flex gap-4">
+                                                <Button className="glass border-white/10" variant="secondary" onClick={() => ReportGenerator.exportToExcel(transactions, clients)} icon="table">Export Excel</Button>
+                                                <Button className="glow" onClick={() => ReportGenerator.generateGeneralCashflow(transactions, clients, settings.businessName)} icon="download">Download PDF Ledger</Button>
                                             </div>
                                         </div>
-                                        <button onClick={() => onDeleteStaff(s.id)} className="text-red-500 hover:text-red-700 p-2 transition-colors">
-                                            <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-center text-slate-400 py-4 text-sm italic">No staff members configured yet.</p>
+                                    </Card>
+                                    <Card className="p-0 overflow-hidden border-white/5">
+                                        <div className="p-8 text-center bg-white/5 border-b border-white/5">
+                                            <h2 className="text-2xl font-black text-white">{settings.businessName}</h2>
+                                            <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mt-2">Official Financial Statement</p>
+                                        </div>
+                                        <div className="p-8">
+                                            <TransactionTable transactions={transactions} clients={clients} />
+                                        </div>
+                                    </Card>
+                                </div>
+                            )
+                        }
+
+                        {
+                            view === 'staff' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {staff.map(s => (
+                                        <Card key={s.id} className="border-orange-500/20 bg-orange-500/5">
+                                            <div className="flex items-center gap-4 mb-6">
+                                                <div className="w-12 h-12 bg-orange-500/20 text-orange-400 rounded-2xl flex items-center justify-center">
+                                                    <Icon name="shield" className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-white">{s.name}</h4>
+                                                    <p className="text-xs text-orange-400 font-bold uppercase tracking-widest">Portal Access PIN: {s.pin}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button variant="secondary" className="flex-1 text-xs glass border-white/5 py-2">Activity</Button>
+                                                <Button variant="danger" className="flex-1 text-xs py-2" onClick={() => handleRevokeStaff(s.id)}>Revoke</Button>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )
+                        }
+
+                        {
+                            view === 'settings' && (
+                                <div className="max-w-3xl space-y-8">
+                                    <Card className="p-8 border-blue-500/20 bg-blue-500/5">
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20 text-white">
+                                                <Icon name="sliders" className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-white">System Environment</h3>
+                                                <p className="text-sm text-gray-500">Manage global portal configurations and security.</p>
+                                            </div>
+                                        </div>
+
+                                        <form className="space-y-8" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const f = new FormData(e.target);
+                                            handleUpdateSettings({
+                                                businessName: f.get('businessName'),
+                                                adminPin: f.get('adminPin'),
+                                                theme: f.get('theme'),
+                                                currency: f.get('currency'),
+                                                systemAlert: f.get('systemAlert'),
+                                                maintenanceMode: f.get('maintenanceMode') === 'on'
+                                            });
+                                        }}>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                <Input label="Business Identity" name="businessName" defaultValue={settings.businessName} icon="building" required />
+                                                <Input label="Admin Portal PIN" name="adminPin" defaultValue={settings.adminPin} maxLength={4} icon="key" required />
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                <div className="space-y-3">
+                                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Interface Theme</label>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <label className={`cursor-pointer group relative p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${settings.theme === 'dark' ? 'border-blue-600 bg-blue-600/10' : 'border-white/5 bg-white/5 hover:border-white/10'}`}>
+                                                            <input type="radio" name="theme" value="dark" defaultChecked={settings.theme === 'dark'} className="hidden" onChange={() => setSettings({ ...settings, theme: 'dark' })} />
+                                                            <Icon name="moon" className={settings.theme === 'dark' ? 'text-blue-400' : 'text-gray-500'} />
+                                                            <span className={`font-bold transition-colors ${settings.theme === 'dark' ? 'text-white' : 'text-gray-500'}`}>Deep Dark</span>
+                                                        </label>
+                                                        <label className={`cursor-pointer group relative p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${settings.theme === 'light' ? 'border-blue-600 bg-blue-600/10' : 'border-white/5 bg-white/5 hover:border-white/10'}`}>
+                                                            <input type="radio" name="theme" value="light" defaultChecked={settings.theme === 'light'} className="hidden" onChange={() => setSettings({ ...settings, theme: 'light' })} />
+                                                            <Icon name="sun" className={settings.theme === 'light' ? 'text-blue-400' : 'text-gray-500'} />
+                                                            <span className={`font-bold transition-colors ${settings.theme === 'light' ? 'text-white' : 'text-gray-500'}`}>Soft Light</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Default Currency</label>
+                                                    <select name="currency" defaultValue={settings.currency} className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none">
+                                                        <option value="NGN">NGN (₦) - Naira</option>
+                                                        <option value="USD">USD ($) - US Dollar</option>
+                                                        <option value="EUR">EUR (€) - Euro</option>
+                                                        <option value="GBP">GBP (£) - British Pound</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Broadcast Alert Message</label>
+                                                    <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Displays to all users</span>
+                                                </div>
+                                                <textarea
+                                                    name="systemAlert"
+                                                    defaultValue={settings.systemAlert}
+                                                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold min-h-[100px]"
+                                                    placeholder="Enter system announcement or maintenance notice..."
+                                                ></textarea>
+                                            </div>
+
+                                            <div className="flex items-center gap-4 p-4 bg-orange-500/5 border border-orange-500/20 rounded-2xl">
+                                                <div className="p-2 bg-orange-500/20 rounded-lg">
+                                                    <Icon name="alert-triangle" className="text-orange-400" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="font-bold text-white text-sm">Maintenance Mode</p>
+                                                    <p className="text-xs text-gray-500">Enable this to restricted client access while you perform updates.</p>
+                                                </div>
+                                                <input type="checkbox" name="maintenanceMode" defaultChecked={settings.maintenanceMode} className="w-6 h-6 rounded-lg bg-white/5 border-white/10 accent-orange-500" />
+                                            </div>
+
+                                            <Button variant="primary" className="w-full py-4 text-lg glow" icon="save">Commit System Changes</Button>
+                                        </form>
+                                    </Card>
+                                </div>
                             )}
+                    </main>
+
+                    {/* Modals */}
+                    {modal && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                            <div className="absolute inset-0 bg-[#0f172a]/90 backdrop-blur-xl" onClick={() => setModal(null)}></div>
+                            <div className="relative z-10 w-full max-w-lg">
+                                <Card className="border-white/10 p-6 md:p-8 shadow-3xl bg-[#1e293b]/50 backdrop-blur-2xl">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-xl md:text-2xl font-black text-white tracking-tighter">
+                                            {modal.type === 'transaction' ? 'RECORD ENTRY' :
+                                                modal.type === 'addClient' ? 'CREATE WALLET' :
+                                                    modal.type === 'editClient' ? 'UPDATE PROFILE' : 'PROVISION STAFF'}
+                                        </h3>
+                                        <button onClick={() => setModal(null)} className="p-2 hover:bg-white/5 rounded-full transition-colors text-gray-400 hover:text-white"><Icon name="x" /></button>
+                                    </div>
+
+                                    {modal.type === 'transaction' && (
+                                        <form className="space-y-6" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const f = new FormData(e.target);
+                                            handleTransactionSubmit({
+                                                clientId: f.get('clientId'),
+                                                type: f.get('type'),
+                                                amount: f.get('amount'),
+                                                method: f.get('method')
+                                            });
+                                        }}>
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-bold text-gray-400 uppercase tracking-widest">Select Client</label>
+                                                <select name="clientId" className="w-full bg-gray-800/50 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none" defaultValue={modal.data?.id || ''} required>
+                                                    <option value="" disabled>Choose a wallet...</option>
+                                                    {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({formatMoney(c.balance)})</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-bold text-gray-400 uppercase tracking-widest">Method</label>
+                                                    <select name="method" className="w-full bg-gray-800/50 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none">
+                                                        <option value="Cash">Cash</option>
+                                                        <option value="Transfer">Bank Transfer</option>
+                                                        <option value="POS">POS Terminal</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-bold text-gray-400 uppercase tracking-widest">Type</label>
+                                                    <select name="type" className="w-full bg-gray-800/50 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none">
+                                                        <option value="DEPOSIT" className="text-emerald-400">Deposit</option>
+                                                        <option value="WITHDRAWAL" className="text-red-400">Withdrawal</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <Input label="Amount" name="amount" type="number" icon="banknote" placeholder="0.00" required />
+                                            <Button className="w-full" variant="primary">Authorize Transaction</Button>
+                                        </form>
+                                    )}
+
+                                    {modal.type === 'addClient' && (
+                                        <form className="space-y-6" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const f = new FormData(e.target);
+                                            handleAddClient({ name: f.get('name'), phone: f.get('phone') });
+                                        }}>
+                                            <Input label="Full Name" name="name" icon="user" placeholder="E.g. John Doe" required />
+                                            <Input label="Phone Number" name="phone" icon="phone" placeholder="080..." maxLength={11} required />
+                                            <Button className="w-full" variant="primary">Register Client Wallet</Button>
+                                        </form>
+                                    )}
+
+                                    {modal.type === 'editClient' && (
+                                        <form className="space-y-6" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const f = new FormData(e.target);
+                                            handleEditClient(modal.data.id, { name: f.get('name'), phone: f.get('phone') });
+                                        }}>
+                                            <Input label="Full Name" name="name" defaultValue={modal.data.name} icon="user" required />
+                                            <Input label="Phone Number" name="phone" defaultValue={modal.data.phone} icon="phone" maxLength={11} required />
+                                            <Button className="w-full" variant="primary">Update Profile</Button>
+                                        </form>
+                                    )}
+
+                                    {modal.type === 'addStaff' && (
+                                        <form className="space-y-6" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const f = new FormData(e.target);
+                                            handleAddStaff({ name: f.get('name'), pin: f.get('pin') });
+                                        }}>
+                                            <Input label="Staff Name" name="name" icon="shield" placeholder="Officer Name" required />
+                                            <Input label="Security PIN" name="pin" type="text" icon="key" placeholder="4-Digit PIN" maxLength={4} required />
+                                            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">This staff will use this PIN to access the Yomola Command Center.</p>
+                                            <Button className="w-full" variant="danger">Provision Access Port</Button>
+                                        </form>
+                                    )}
+                                </Card>
+                            </div>
                         </div>
+                    )
+                    }
+                </div >
+            );
+        };
+
+        const ActivityList = ({ loading, transactions, isAdminView }) => {
+            return (
+                <div className="space-y-4">
+                    {loading ? (
+                        <div className="text-center py-20 flex flex-col items-center gap-4">
+                            <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-500 rounded-full animate-spin"></div>
+                            <p className="text-gray-500 uppercase tracking-widest text-xs font-bold">Synchronizing Ledger...</p>
+                        </div>
+                    ) : transactions.length > 0 ? (
+                        transactions.slice(0, 10).map(t => (
+                            <div key={t.id} className="glass group p-5 rounded-2xl flex items-center justify-between border-white/5 hover:bg-white/5 hover:-translate-y-1 transition-all duration-300">
+                                <div className="flex items-center gap-6">
+                                    <div className={`p-4 rounded-2xl shadow-inner ${t.type === 'DEPOSIT' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                        <Icon name={t.type === 'DEPOSIT' ? 'plus' : 'minus'} className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-bold text-lg text-white">{t.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'}</p>
+                                            {isAdminView && <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-gray-500">ID: {t.clientId.slice(-4)}</span>}
+                                        </div>
+                                        <p className="text-xs text-gray-500 font-medium uppercase tracking-widest">
+                                            {formatDate(t.date)} • {t.method} {t.recordedBy ? `• ${t.recordedBy}` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className={`text-2xl font-black ${t.type === 'DEPOSIT' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {t.type === 'DEPOSIT' ? '+' : '-'}{formatMoney(t.amount)}
+                                </p>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="glass p-20 text-center text-gray-500 rounded-3xl border-dashed border-white/5">
+                            <Icon name="folder-open" className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                            <p className="font-medium">No activity recorded for this period.</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const TransactionTable = ({ transactions, clients }) => {
+            return (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-white/5 text-gray-500 uppercase text-[10px] font-black tracking-[0.2em]">
+                            <tr>
+                                <th className="px-6 py-4">Date</th>
+                                <th className="px-6 py-4">Client</th>
+                                <th className="px-6 py-4">Type</th>
+                                <th className="px-6 py-4">Amount</th>
+                                <th className="px-6 py-4">Recorded By</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {transactions.map(t => (
+                                <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                                    <td className="px-6 py-4 text-sm text-gray-400">{formatDate(t.date)}</td>
+                                    <td className="px-6 py-4 font-bold text-white">{clients.find(c => c.id === t.clientId)?.name || 'Unknown'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${t.type === 'DEPOSIT' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                            {t.type}
+                                        </span>
+                                    </td>
+                                    <td className={`px-6 py-4 font-black ${t.type === 'DEPOSIT' ? 'text-emerald-400' : 'text-red-400'}`}>{formatMoney(t.amount)}</td>
+                                    <td className="px-6 py-4 text-xs text-gray-500">{t.recordedBy || 'System'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        // --- LANDING PAGE ---
+        const LandingPage = ({ onGetStarted }) => {
+            return (
+                <div className="min-h-screen bg-[#0f172a] overflow-x-hidden">
+                    {/* Floating Background Blobs */}
+                    <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
+                    <div className="absolute bottom-[20%] left-[-10%] w-[400px] h-[400px] bg-indigo-600/10 blur-[100px] rounded-full"></div>
+
+                    {/* Navbar */}
+                    <nav className="relative z-10 px-6 py-8 flex justify-between items-center max-w-7xl mx-auto">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
+                                <Icon name="activity" className="text-white" />
+                            </div>
+                            <span className="text-2xl font-bold tracking-tighter text-white">Yomola Global</span>
+                        </div>
+                        <div className="hidden md:flex gap-8 text-gray-400 font-medium">
+                            <a href="#about" className="hover:text-blue-400 transition">About</a>
+                            <a href="#solutions" className="hover:text-blue-400 transition">Solutions</a>
+                            <a href="#security" className="hover:text-blue-400 transition">Security</a>
+                        </div>
+                        <Button variant="secondary" onClick={onGetStarted} className="border-white/10 glass text-white">
+                            Portals
+                        </Button>
+                    </nav>
+
+                    {/* Hero Section */}
+                    <section className="relative z-10 px-6 pt-20 pb-32 flex flex-col items-center text-center max-w-5xl mx-auto">
+                        <div className="inline-flex py-1 px-3 mb-6 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest animate-pulse">
+                            Secure Wealth Management
+                        </div>
+                        <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter leading-[0.9] mb-8">
+                            Save Smarter. <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">Live Better.</span>
+                        </h1>
+                        <p className="text-gray-400 text-xl max-w-2xl mb-12">
+                            Yomola Global empowers you to build a secure financial future. Our sophisticated infrastructure
+                            simplifies capital growth with elite-level transparency and 3D security.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-6">
+                            <Button variant="primary" onClick={onGetStarted} className="text-xl px-12 py-5 glow">
+                                Get Started Today
+                            </Button>
+                            <Button variant="secondary" className="text-xl px-12 py-5 border-white/10 glass">
+                                Contact Support
+                            </Button>
+                        </div>
+
+                        {/* 3D Visual Mockup */}
+                        <div className="mt-24 relative w-full max-w-4xl mx-auto perspective-1000">
+                            <div className="glass border-white/20 rounded-3xl p-4 shadow-2xl transform rotateX(15deg) transition-transform hover:rotateX(5deg) duration-700">
+                                <div className="bg-[#0f172a] rounded-2xl p-8 h-[400px] flex flex-col justify-center items-center relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-600/5 to-transparent"></div>
+                                    <Icon name="shield-check" className="w-48 h-48 text-blue-500/20 mb-8 animate-float" />
+                                    <div className="text-center">
+                                        <h4 className="text-2xl font-bold text-white mb-2">Multi-Layer Ledger Security</h4>
+                                        <p className="text-gray-500">Your assets are protected by enterprise-grade encryption and 3D depth verification protocols.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* About Section */}
+                    <section id="about" className="relative z-10 px-6 py-32 max-w-7xl mx-auto border-t border-white/5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
+                            <div>
+                                <h2 className="text-5xl font-black text-white mb-8 tracking-tighter">Premier Wealth <br /><span className="text-blue-500">Infrastructure.</span></h2>
+                                <p className="text-gray-400 text-lg leading-relaxed mb-6">
+                                    Yomola Global is more than a savings platform; it is a meticulously engineered financial ecosystem.
+                                    Our mission is to bridge the gap between traditional savings and modern digital asset management.
+                                </p>
+                                <p className="text-gray-400 text-lg leading-relaxed">
+                                    Founded on the principles of transparency and absolute security, we provide the tools for
+                                    individuals and institutions to grow their capital with confidence.
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6">
+                                <Card className="border-blue-500/20 p-8 text-center">
+                                    <h4 className="text-4xl font-black text-white mb-2">100%</h4>
+                                    <p className="text-xs text-gray-500 uppercase font-black">Transparency</p>
+                                </Card>
+                                <Card className="border-emerald-500/20 p-8 text-center">
+                                    <h4 className="text-4xl font-black text-white mb-2">24/7</h4>
+                                    <p className="text-xs text-gray-500 uppercase font-black">Monitoring</p>
+                                </Card>
+                                <Card className="border-indigo-500/20 p-8 text-center">
+                                    <h4 className="text-4xl font-black text-white mb-2">3D</h4>
+                                    <p className="text-xs text-gray-500 uppercase font-black">Security</p>
+                                </Card>
+                                <Card className="border-orange-500/20 p-8 text-center">
+                                    <h4 className="text-4xl font-black text-white mb-2">Elite</h4>
+                                    <p className="text-xs text-gray-500 uppercase font-black">Service</p>
+                                </Card>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Solutions Section */}
+                    <section id="solutions" className="relative z-10 bg-white/5 py-32 px-6 overflow-hidden">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="text-center mb-20">
+                                <h2 className="text-5xl font-black text-white tracking-tighter">Strategic Solutions</h2>
+                                <p className="text-gray-400 mt-4 text-lg">Architected for growth, designed for stability.</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+                                {[
+                                    { title: "Smart Vaulting", icon: "wallet", desc: "Our intelligent vault system automates your savings goals with precision interest tracking." },
+                                    { title: "Real-time Ledger", icon: "list-checks", desc: "Access your financial history with absolute clarity. Every transaction is logged and verifiable." },
+                                    { title: "Institutional Grade", icon: "shield", desc: "Experience the same security protocols used by leading financial institutions globally." }
+                                ].map((f, i) => (
+                                    <div key={i} className="glass p-12 rounded-[2.5rem] hover:bg-white/10 transition group cursor-default border-white/5">
+                                        <div className="p-6 bg-blue-600/10 text-blue-400 rounded-3xl inline-block mb-8 group-hover:scale-110 transition-transform">
+                                            <Icon name={f.icon} className="w-10 h-10" />
+                                        </div>
+                                        <h3 className="text-3xl font-bold text-white mb-6 tracking-tight">{f.title}</h3>
+                                        <p className="text-gray-400 text-lg leading-relaxed">{f.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Footer */}
+                    <footer className="relative z-10 px-6 py-20 border-t border-white/5 text-center max-w-7xl mx-auto">
+                        <div className="flex flex-col items-center">
+                            <div className="p-3 bg-blue-600 rounded-xl mb-6">
+                                <Icon name="activity" className="text-white w-8 h-8" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-4 tracking-tighter">Yomola Global</h3>
+                            <p className="text-gray-500 text-sm max-w-md">
+                                All funds are managed under strict regulatory compliance and protected by advanced cryptographic protocols.
+                                © 2026 Yomola Global. Secure Financial Future.
+                            </p>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+
+        // --- PORTAL CHOICE ---
+        const PortalChoice = ({ onSelect, onBack }) => {
+            return (
+                <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
+                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent"></div>
+                    <div className="relative z-10 w-full max-w-4xl">
+                        <div className="text-center mb-16">
+                            <h2 className="text-5xl font-black text-white mb-6 tracking-tighter">Choose Your Gateway</h2>
+                            <p className="text-gray-400 text-lg">Select the appropriate portal to access the Yomola Global ecosystem.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <button onClick={() => onSelect('client')} className="glass group p-10 rounded-[2.5rem] text-left hover:bg-white/10 transition-all hover:-translate-y-2 border-white/5 hover:border-blue-500/50">
+                                <div className="p-5 bg-blue-600/10 text-blue-400 rounded-3xl inline-block mb-8 group-hover:scale-110 transition-transform shadow-2xl shadow-blue-500/10">
+                                    <Icon name="user" className="w-10 h-10" />
+                                </div>
+                                <h3 className="text-3xl font-bold text-white mb-3">Client Workspace</h3>
+                                <p className="text-gray-400 text-lg">Manage personal savings, track transactions, and download statements in real-time.</p>
+                                <div className="mt-8 flex items-center gap-2 text-blue-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    Continue to Savings <Icon name="arrow-right" />
+                                </div>
+                            </button>
+
+                            <button onClick={() => onSelect('admin')} className="glass group p-10 rounded-[2.5rem] text-left hover:bg-white/10 transition-all hover:-translate-y-2 border-white/5 hover:border-orange-500/50">
+                                <div className="p-5 bg-orange-600/10 text-orange-400 rounded-3xl inline-block mb-8 group-hover:scale-110 transition-transform shadow-2xl shadow-orange-500/10">
+                                    <Icon name="shield" className="w-10 h-10" />
+                                </div>
+                                <h3 className="text-3xl font-bold text-white mb-3">Administration</h3>
+                                <p className="text-gray-400 text-lg">Central hub for staff to manage clients, record transactions, and generate system reports.</p>
+                                <div className="mt-8 flex items-center gap-2 text-orange-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    Access Command Center <Icon name="arrow-right" />
+                                </div>
+                            </button>
+                        </div>
+                        <button onClick={onBack} className="mt-12 w-full text-gray-500 hover:text-white transition flex items-center justify-center gap-2">
+                            <Icon name="arrow-left" /> Back to Website
+                        </button>
                     </div>
                 </div>
             );
         };
 
-
-        const TransactionsView = ({ transactions, clients }) => {
-            const [searchTerm, setSearchTerm] = useState(''); const [filterType, setFilterType] = useState('ALL');
-            const filteredTransactions = useMemo(() => transactions.filter(t => { const client = clients.find(c => c.id === t.clientId); const nameMatch = client?.name.toLowerCase().includes(searchTerm.toLowerCase()); const phoneMatch = client?.phone.includes(searchTerm); const typeMatch = filterType === 'ALL' || t.type === filterType; return (nameMatch || phoneMatch) && typeMatch; }), [transactions, clients, searchTerm, filterType]);
-            return (
-                <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div className="relative w-full md:w-96"><input type="text" placeholder="Search by name or phone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" /><i data-lucide="search" className="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i></div><div className="flex gap-2">{['ALL', 'DEPOSIT', 'WITHDRAWAL'].map(type => (<button key={type} onClick={() => setFilterType(type)} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${filterType === type ? 'bg-brand-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-100'}`}>{type}</button>))}</div></div>
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-100 overflow-x-auto"><table className="w-full text-left text-sm min-w-[700px]"><thead className="bg-slate-50 text-slate-500 font-medium"><tr><th className="p-4">Date</th><th className="p-4">Client</th><th className="p-4">Type</th><th className="p-4">Method</th><th className="p-4 text-right">Amount</th><th className="p-4 text-center">Staff</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredTransactions.map(t => { const client = clients.find(c => c.id === t.clientId); return (<tr key={t.id} className="hover:bg-slate-50 transition"><td className="p-4 text-slate-500">{t.date}</td><td className="p-4"><div className="font-medium text-slate-900">{client?.name || 'Unknown'}</div><div className="text-xs text-slate-400 font-mono">{client?.phone}</div></td><td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${t.type === 'DEPOSIT' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{t.type}</span></td><td className="p-4 text-slate-600">{t.method}</td><td className={`p-4 text-right font-bold ${t.type === 'DEPOSIT' ? 'text-emerald-600' : 'text-red-600'}`}>{t.type === 'DEPOSIT' ? '+' : '-'}{formatMoney(t.amount)}</td><td className="p-4 text-center text-xs text-slate-500 font-medium uppercase">{t.processedBy || 'Admin'}</td></tr>); })}{filteredTransactions.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-slate-400">No transactions found</td></tr>}</tbody></table></div>
-                </div>
-            );
-        };
-
-        const ReportsView = ({ transactions, clients }) => {
-            const reportData = useMemo(() => {
-                const now = new Date(); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-                const monthTx = transactions.filter(t => t.date >= startOfMonth);
-                const deposits = monthTx.filter(t => t.type === 'DEPOSIT').reduce((s, t) => s + t.amount, 0); const withdrawals = monthTx.filter(t => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amount, 0); const methods = monthTx.reduce((acc, t) => { acc[t.method] = (acc[t.method] || 0) + (t.type === 'DEPOSIT' ? t.amount : -t.amount); return acc; }, {});
-                return { deposits, withdrawals, methods };
-            }, [transactions]);
-            return (
-                <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-4">This Month's Summary</h3><div className="space-y-4"><div className="flex justify-between items-center"><span className="text-slate-600">Total Deposits</span><span className="text-emerald-600 font-bold">{formatMoney(reportData.deposits)}</span></div><div className="flex justify-between items-center"><span className="text-slate-600">Total Withdrawals</span><span className="text-red-600 font-bold">{formatMoney(reportData.withdrawals)}</span></div><div className="pt-4 border-t border-slate-50 flex justify-between items-center"><span className="font-bold text-slate-900 text-lg">Net Growth</span><span className={`text-xl font-bold ${reportData.deposits >= reportData.withdrawals ? 'text-brand-600' : 'text-orange-600'}`}>{formatMoney(reportData.deposits - reportData.withdrawals)}</span></div></div></div><div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-4">Channel Performance</h3><div className="space-y-3">{Object.entries(reportData.methods).map(([method, val]) => (<div key={method} className="flex flex-col gap-1"><div className="flex justify-between text-sm"><span className="font-medium">{method}</span><span className="font-bold">{formatMoney(Math.abs(val))}</span></div><div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full ${val >= 0 ? 'bg-brand-500' : 'bg-red-500'}`} style={{ width: `${Math.min(100, (Math.abs(val) / (reportData.deposits || 1)) * 100)}%` }}></div></div></div>))}</div></div></div>
-                </div>
-            );
-        };
-
+        // --- MAIN APP COMPONENT ---
         const App = () => {
-            const [session, setSession] = useState('loading');
-            const [currentUser, setCurrentUser] = useState(null);
-            const [settings, setSettings] = useState(null);
-            const [staff, setStaff] = useState([]);
-            const [clients, setClients] = useState([]);
-            const [transactions, setTransactions] = useState([]);
-            const [isLoading, setIsLoading] = useState(false);
-            const [currentView, setCurrentView] = useState('dashboard');
-            const [selectedClientId, setSelectedClientId] = useState(null);
+            const [view, setView] = useState('landing');
+            const [portalType, setPortalType] = useState(null);
+            const [user, setUser] = useState(null);
+            const [ready, setReady] = useState(false);
 
-            useEffect(() => { const initApp = async () => { await CloudStorage.init(); try { const data = await CloudStorage.loadSettings(); setSettings(data); setSession('auth'); } catch (e) { setSettings({ businessName: 'Yomola Global', adminPin: null }); setSession('auth'); } }; initApp(); }, []);
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [session, currentUser, clients, currentView, selectedClientId]);
+            useEffect(() => { setTimeout(() => setReady(true), 800); }, []);
 
-            const loadAdminData = async () => { setIsLoading(true); try { const [stf, cls, txs] = await Promise.all([CloudStorage.loadStaff(), CloudStorage.loadClients(), CloudStorage.loadTransactions()]); setStaff(stf); setClients(cls); setTransactions(txs); } catch (e) { console.error("Load admin data error:", e); } finally { setIsLoading(false); } };
-            const handleLogin = async (creds) => { setIsLoading(true); try { const latestSettings = await CloudStorage.loadSettings(); if (creds.type === 'staff') { const adminPin = latestSettings.adminPin; if (!adminPin) { await CloudStorage.saveSettings({ ...latestSettings, adminPin: creds.password }); setCurrentUser({ name: creds.name, role: 'admin', password: creds.password }); await loadAdminData(); setSession('app'); } else if (creds.password === adminPin) { setCurrentUser({ name: 'Admin', role: 'admin' }); await loadAdminData(); setSession('app'); } else { const staffList = await CloudStorage.loadStaff(); const member = staffList.find(s => s.name === creds.name && s.password === creds.password); if (member) { setCurrentUser(member); await loadAdminData(); setSession('app'); } else { alert("Invalid name or password"); } } } else { const client = await CloudStorage.getClientByPhone(creds.phone); if (client) { const txs = await CloudStorage.loadTransactions(client.id); setCurrentUser(client); setTransactions(txs); setSession('client'); } else { alert("Phone number not found."); } } } catch (e) { console.error("Login Error:", e); } finally { setIsLoading(false); } };
-            const handleLogout = () => { setSession('auth'); setCurrentUser(null); setStaff([]); setClients([]); setTransactions([]); };
-            const crud = {
-                addStaff: async (s) => { const res = await CloudStorage.addStaff(s); setStaff(prev => [...prev, res]); },
-                deleteStaff: async (id) => { await CloudStorage.deleteStaff(id); setStaff(prev => prev.filter(st => st.id !== id)); },
-                addClient: async (c) => { const res = await CloudStorage.addClient(c); setClients(prev => [...prev, res]); return res; },
-                deleteClient: async (id) => { setIsLoading(true); try { await CloudStorage.deleteClient(id); setClients(prev => prev.filter(cl => cl.id !== id)); setTransactions(prev => prev.filter(tx => tx.clientId !== id)); } finally { setIsLoading(false); } },
-                addTransaction: async (tx) => { setIsLoading(true); try { const client = clients.find(cl => cl.id === tx.clientId); const res = await CloudStorage.addTransaction({ ...tx, processedBy: currentUser.name, date: tx.date || new Date().toISOString().slice(0, 10) }, client.balance); setClients(prev => prev.map(cl => cl.id === tx.clientId ? { ...cl, balance: res.newBalance } : cl)); setTransactions(prev => [res, ...prev]); } finally { setIsLoading(false); } }
+            if (!ready) return <div className="h-screen bg-[#0f172a] flex items-center justify-center"><div className="w-16 h-16 border-4 border-blue-600/20 border-t-blue-500 rounded-full animate-spin"></div></div>;
+
+            const handleLoginSuccess = (userData) => {
+                setUser(userData);
+                setView('dashboard');
             };
 
-            const renderView = () => {
-                if (session === 'loading') return <div className="flex h-screen items-center justify-center text-slate-400">Loading System...</div>;
-                if (session === 'client') return <ClientPortal client={currentUser} transactions={transactions} onLogout={handleLogout} />;
-                if (session === 'app') return (
-                    <Layout currentView={currentView} onViewChange={(v) => { setCurrentView(v); setSelectedClientId(null); }} onLogout={handleLogout} currentUser={currentUser}>
-                        {isLoading && <div className="fixed top-0 left-0 w-full h-1 bg-brand-500 animate-pulse z-50"></div>}
-                        {currentView === 'dashboard' && <DashboardHome clients={clients} transactions={transactions} />}
-                        {currentView === 'clients' && !selectedClientId && <ClientManager clients={clients} onAddClient={crud.addClient} onSelectClient={setSelectedClientId} onDeleteClient={crud.deleteClient} />}
-                        {selectedClientId && <ClientDetail client={clients.find(c => c.id === selectedClientId)} transactions={transactions} onBack={() => setSelectedClientId(null)} onTransaction={crud.addTransaction} />}
-                        {currentView === 'transactions' && <TransactionsView transactions={transactions} clients={clients} />}
-                        {currentView === 'reports' && <ReportsView transactions={transactions} clients={clients} />}
-                        {currentView === 'settings' && currentUser?.role === 'admin' && <Settings appData={{ staff }} onAddStaff={crud.addStaff} onDeleteStaff={crud.deleteStaff} onBack={() => setCurrentView('dashboard')} />}
-                        {currentView === 'settings' && currentUser?.role !== 'admin' && <div className="p-8 text-center text-slate-500">Access Denied. Admins only.</div>}
-                    </Layout>
-                );
-                return <AuthScreen onLogin={handleLogin} onSetup={(creds) => handleLogin({ type: 'staff', ...creds })} hasAccount={settings?.adminPin !== undefined} />;
+            const handleLogout = () => {
+                setUser(null);
+                setView('landing');
             };
-            return renderView();
+
+            if (view === 'landing') return <LandingPage onGetStarted={() => setView('choice')} />;
+            if (view === 'choice') return <PortalChoice onSelect={(type) => { setPortalType(type); setView('auth'); }} onBack={() => setView('landing')} />;
+            if (view === 'auth') return <AuthScreen forceStep={portalType === 'admin' ? 'admin' : 'phone'} onLoginSuccess={handleLoginSuccess} onBack={() => setView('choice')} />;
+            if (view === 'dashboard' && user) return <Dashboard user={user} onLogout={handleLogout} />;
+
+            return <div className="h-screen bg-[#0f172a] flex items-center justify-center text-gray-500">Loading Application...</div>;
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
