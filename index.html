@@ -167,6 +167,9 @@
             loadRequests: async () => {
                 const snapshot = await db.collection('requests').orderBy('createdAt', 'desc').get();
                 return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            },
+            updateRequestStatus: async (requestId, status) => {
+                await db.collection('requests').doc(requestId).update({ status });
             }
         };
 
@@ -473,6 +476,7 @@
                 maintenanceMode: false,
                 systemAlert: ''
             });
+            const [currentUserBalance, setCurrentUserBalance] = useState(user.balance || 0);
             const [sidebarOpen, setSidebarOpen] = useState(false);
 
             const refreshData = async () => {
@@ -498,6 +502,11 @@
                 } else {
                     const txs = await CloudStorage.loadTransactions(user.id);
                     setTransactions(txs);
+                    // Fetch latest profile for balance sync
+                    const snapshot = await db.collection('clients').doc(user.id).get();
+                    if (snapshot.exists) {
+                        setCurrentUserBalance(snapshot.data().balance || 0);
+                    }
                 }
                 setLoading(false);
             };
@@ -511,7 +520,7 @@
                 currentCurrency = currencySymbols[settings.currency] || '₦';
             }, [settings.theme, settings.currency]);
 
-            const balance = isAdminView ? clients.reduce((s, c) => s + (c.balance || 0), 0) : user.balance;
+            const balance = isAdminView ? clients.reduce((s, c) => s + (c.balance || 0), 0) : currentUserBalance;
 
             const stats = useMemo(() => {
                 if (!isAdminView) return null;
@@ -536,6 +545,11 @@
                     };
                     const client = clients.find(c => c.id === tx.clientId);
                     await CloudStorage.addTransaction(tx, client.balance);
+
+                    if (data.requestId) {
+                        await CloudStorage.updateRequestStatus(data.requestId, 'APPROVED');
+                    }
+
                     setModal(null);
                     refreshData();
                 } catch (e) { alert("Transaction failed"); }
@@ -630,13 +644,13 @@
                             <button onClick={() => { setView('home'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'home' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                 <Icon name="layout-dashboard" /> Dashboard
                             </button>
+                            <button onClick={() => { setView('transactions'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'transactions' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                <Icon name="list" /> Transactions
+                            </button>
                             {isAdminView && (
                                 <>
                                     <button onClick={() => { setView('clients'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'clients' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                         <Icon name="users" /> Clients
-                                    </button>
-                                    <button onClick={() => { setView('transactions'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'transactions' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
-                                        <Icon name="list" /> Transactions
                                     </button>
                                     <button onClick={() => { setView('requests'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'requests' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'} relative`}>
                                         <Icon name="bell" /> Requests
@@ -722,7 +736,7 @@
                                             ) : (
                                                 <>
                                                     <Button onClick={() => setModal({ type: 'withdrawal' })} variant="primary" className="glow">Withdrawal Request</Button>
-                                                    <Button variant="secondary" className="glass bg-white/5 border-white/10" onClick={() => ReportGenerator.generateClientStatement(user, transactions, settings.businessName)} icon="download">Statement</Button>
+                                                    <Button variant="secondary" className="glass bg-white/5 border-white/10" onClick={() => ReportGenerator.generateClientStatement({ ...user, balance: currentUserBalance }, transactions, settings.businessName)} icon="download">Statement</Button>
                                                 </>
                                             )}
                                         </div>
@@ -768,6 +782,27 @@
                                     </div>
                                     <ActivityList loading={loading} transactions={transactions} isAdminView={isAdminView} />
                                 </div>
+
+                                {isAdminView && requests.filter(r => r.status === 'PENDING').length > 0 && (
+                                    <div className="p-8 bg-blue-600/10 border border-blue-500/20 rounded-3xl">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h3 className="text-xl font-bold text-white uppercase tracking-widest">Pending Notices</h3>
+                                            <button onClick={() => setView('requests')} className="text-blue-400 text-xs font-bold hover:underline uppercase tracking-widest">Open Terminal</button>
+                                        </div>
+                                        <div className="space-y-4">
+                                            {requests.filter(r => r.status === 'PENDING').map(r => (
+                                                <div key={r.id} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                    <div>
+                                                        <p className="font-bold text-white">{r.clientName}</p>
+                                                        <p className="text-xs text-gray-500 uppercase tracking-widest">{formatMoney(r.amount)} • {r.method}</p>
+                                                        {r.note && <p className="text-[10px] text-blue-400 italic mt-1">{r.note}</p>}
+                                                    </div>
+                                                    <Button variant="primary" className="text-[10px] py-1 px-3" onClick={() => setView('requests')}>Review</Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -864,6 +899,45 @@
                                             </div>
                                         </Card>
                                     ))}
+                                </div>
+                            )
+                        }
+
+                        {
+                            view === 'requests' && (
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-3xl font-bold text-white tracking-tight">Pending Withdrawal Requests</h3>
+                                        <span className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">{requests.filter(r => r.status === 'PENDING').length} New Notices</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {requests.length > 0 ? requests.map(r => (
+                                            <Card key={r.id} className={`flex items-center justify-between transition-all ${r.status === 'PENDING' ? 'border-blue-500/30 bg-blue-500/5' : 'opacity-50'}`}>
+                                                <div className="flex items-center gap-6">
+                                                    <div className={`p-4 rounded-2xl ${r.status === 'PENDING' ? 'bg-blue-600 text-white animate-pulse' : 'bg-gray-800 text-gray-500'}`}>
+                                                        <Icon name="banknote" className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-lg text-white">{r.clientName}</p>
+                                                        <p className="text-xs text-gray-500 font-medium uppercase tracking-widest">Requested {formatMoney(r.amount)} • {r.method} • {formatDate(r.createdAt)}</p>
+                                                        {r.note && <p className="text-sm text-blue-400 italic mt-1 pb-1">"{r.note}"</p>}
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    {r.status === 'PENDING' && <Button variant="primary" className="text-xs py-2" onClick={() => {
+                                                        const client = clients.find(c => c.id === r.clientId);
+                                                        setModal({ type: 'transaction', data: { ...client, amount: r.amount, method: r.method, requestId: r.id, note: `Withdrawal Approved: ${r.note}` } });
+                                                    }}>Approve & Process</Button>}
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-md ${r.status === 'PENDING' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-500/20 text-gray-500'}`}>{r.status}</span>
+                                                </div>
+                                            </Card>
+                                        )) : (
+                                            <div className="glass p-20 text-center text-gray-500 rounded-3xl border-dashed border-white/5">
+                                                <Icon name="bell-off" className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                                <p className="font-medium">No pending withdrawal requests at the moment.</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )
                         }
@@ -981,7 +1055,8 @@
                                                 clientId: f.get('clientId'),
                                                 type: f.get('type'),
                                                 amount: f.get('amount'),
-                                                method: f.get('method')
+                                                method: f.get('method'),
+                                                requestId: f.get('requestId')
                                             });
                                         }}>
                                             <div className="space-y-2">
@@ -990,6 +1065,7 @@
                                                     <option value="" disabled>Choose a wallet...</option>
                                                     {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({formatMoney(c.balance)})</option>)}
                                                 </select>
+                                                {modal.data?.requestId && <input type="hidden" name="requestId" value={modal.data.requestId} />}
                                             </div>
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div className="space-y-2">
