@@ -1,8 +1,26 @@
 const { useState, useEffect, useMemo } = React;
 const { Icon, Card, Button, Input, ActivityList, TransactionTable } = window.UI;
 
+// --- ROUTER UTILS ---
+const useRouter = () => {
+    const [hash, setHash] = useState(window.location.hash);
+    useEffect(() => {
+        const onHashChange = () => setHash(window.location.hash);
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+    }, []);
+    // Parse routes like: #/dashboard/transactions
+    const path = hash.replace('#/', '').split('/');
+    return {
+        path,
+        fullHash: hash,
+        navigate: (to) => window.location.hash = '/' + to
+    };
+};
+
 // --- AUTH SCREEN ---
-const AuthScreen = ({ onLoginSuccess, onBack, forceStep }) => {
+const AuthScreen = ({ onLoginSuccess, forceStep }) => {
+    const { navigate } = useRouter();
     const [step, setStep] = useState(forceStep || 'phone');
     const [phone, setPhone] = useState('');
     const [password, setPassword] = useState('');
@@ -113,7 +131,7 @@ const AuthScreen = ({ onLoginSuccess, onBack, forceStep }) => {
                             <Button className="w-full" variant="danger">Access Terminal</Button>
                         </form>
                     )}
-                    <button onClick={onBack} className="w-full text-sm text-gray-500 mt-6 hover:text-gray-300 transition">Back to Selection</button>
+                    <button onClick={() => navigate('portal')} className="w-full text-sm text-gray-500 mt-6 hover:text-gray-300 transition">Back to Selection</button>
                 </Card>
             </div>
         </div>
@@ -122,11 +140,14 @@ const AuthScreen = ({ onLoginSuccess, onBack, forceStep }) => {
 
 // --- DASHBOARD ---
 const Dashboard = ({ user, onLogout }) => {
+    const { path, navigate } = useRouter();
+    // path[0] == 'dashboard', path[1] == subview (e.g. 'transactions')
+    const view = path[1] || 'home';
+
     const isFullAdmin = user.role === 'admin';
     const isStaff = user.role === 'staff';
     const isAdminView = isFullAdmin || isStaff;
 
-    const [view, setView] = useState('home');
     const [transactions, setTransactions] = useState([]);
     const [clients, setClients] = useState([]);
     const [staff, setStaff] = useState([]);
@@ -149,10 +170,7 @@ const Dashboard = ({ user, onLogout }) => {
         const s = await window.CloudStorage.loadSettings();
         setSettings(s);
 
-        // Update Global Currency via helper
         window.setCurrency({ 'NGN': '₦', 'USD': '$', 'EUR': '€', 'GBP': '£' }[s.currency] || '₦');
-
-        // Update Theme
         document.body.classList.toggle('light-theme', s.theme === 'light');
 
         if (isAdminView) {
@@ -166,7 +184,6 @@ const Dashboard = ({ user, onLogout }) => {
         } else {
             const txs = await window.CloudStorage.loadTransactions(user.id);
             setTransactions(txs);
-            // Fetch latest profile for balance sync
             const snapshot = await window.db.collection('clients').doc(user.id).get();
             if (snapshot.exists) {
                 setCurrentUserBalance(snapshot.data().balance || 0);
@@ -177,7 +194,6 @@ const Dashboard = ({ user, onLogout }) => {
 
     useEffect(() => { refreshData(); }, [user]);
 
-    // Sync theme when settings change
     useEffect(() => {
         document.body.classList.toggle('light-theme', settings.theme === 'light');
         window.setCurrency({ 'NGN': '₦', 'USD': '$', 'EUR': '€', 'GBP': '£' }[settings.currency] || '₦');
@@ -281,6 +297,12 @@ const Dashboard = ({ user, onLogout }) => {
         } catch (e) { alert("Request failed"); }
     };
 
+    // Helper for navigation
+    const go = (subview) => {
+        navigate(`dashboard/${subview}`);
+        setSidebarOpen(false);
+    }
+
     return (
         <div className="flex h-screen bg-[#0f172a] overflow-hidden font-['Outfit'] relative">
             <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden absolute top-6 right-6 z-50 p-3 bg-blue-600 rounded-xl shadow-lg text-white">
@@ -295,30 +317,30 @@ const Dashboard = ({ user, onLogout }) => {
                     <span className="font-bold text-xl tracking-tighter text-white">Yomola</span>
                 </div>
                 <nav className="flex-1 space-y-2">
-                    <button onClick={() => { setView('home'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'home' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                    <button onClick={() => go('home')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'home' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                         <Icon name="layout-dashboard" /> Dashboard
                     </button>
-                    <button onClick={() => { setView('transactions'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'transactions' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                    <button onClick={() => go('transactions')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'transactions' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                         <Icon name="list" /> Transactions
                     </button>
                     {isAdminView && (
                         <>
-                            <button onClick={() => { setView('clients'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'clients' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                            <button onClick={() => go('clients')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'clients' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                 <Icon name="users" /> Clients
                             </button>
-                            <button onClick={() => { setView('requests'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'requests' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'} relative`}>
+                            <button onClick={() => go('requests')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'requests' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'} relative`}>
                                 <Icon name="bell" /> Requests
                                 {requests.filter(r => r.status === 'PENDING').length > 0 && <span className="absolute top-2 right-4 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-[#0f172a] font-bold">{requests.filter(r => r.status === 'PENDING').length}</span>}
                             </button>
-                            <button onClick={() => { setView('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'reports' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                            <button onClick={() => go('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'reports' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                 <Icon name="file-text" /> Reports
                             </button>
                             {isFullAdmin && (
                                 <>
-                                    <button onClick={() => { setView('staff'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'staff' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                    <button onClick={() => go('staff')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'staff' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                         <Icon name="shield-half" /> Staff
                                     </button>
-                                    <button onClick={() => { setView('settings'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'settings' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
+                                    <button onClick={() => go('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${view === 'settings' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-400 hover:bg-white/5'}`}>
                                         <Icon name="settings" /> Settings
                                     </button>
                                 </>
@@ -421,7 +443,7 @@ const Dashboard = ({ user, onLogout }) => {
                         <div>
                             <div className="flex justify-between items-center mb-8">
                                 <h3 className="text-3xl font-bold text-white tracking-tight">Recent Activity</h3>
-                                <button onClick={() => setView('transactions')} className="text-blue-400 text-sm font-bold hover:underline">View All Records</button>
+                                <button onClick={() => go('transactions')} className="text-blue-400 text-sm font-bold hover:underline">View All Records</button>
                             </div>
                             <ActivityList loading={loading} transactions={transactions} isAdminView={isAdminView} />
                         </div>
@@ -430,7 +452,7 @@ const Dashboard = ({ user, onLogout }) => {
                             <div className="p-8 bg-blue-600/10 border border-blue-500/20 rounded-3xl">
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-xl font-bold text-white uppercase tracking-widest">Pending Notices</h3>
-                                    <button onClick={() => setView('requests')} className="text-blue-400 text-xs font-bold hover:underline uppercase tracking-widest">Open Terminal</button>
+                                    <button onClick={() => go('requests')} className="text-blue-400 text-xs font-bold hover:underline uppercase tracking-widest">Open Terminal</button>
                                 </div>
                                 <div className="space-y-4">
                                     {requests.filter(r => r.status === 'PENDING').map(r => (
@@ -440,7 +462,7 @@ const Dashboard = ({ user, onLogout }) => {
                                                 <p className="text-xs text-gray-500 uppercase tracking-widest">{window.formatMoney(r.amount)} • {r.method}</p>
                                                 {r.note && <p className="text-[10px] text-blue-400 italic mt-1">{r.note}</p>}
                                             </div>
-                                            <Button variant="primary" className="text-[10px] py-1 px-3" onClick={() => setView('requests')}>Review</Button>
+                                            <Button variant="primary" className="text-[10px] py-1 px-3" onClick={() => go('requests')}>Review</Button>
                                         </div>
                                     ))}
                                 </div>
@@ -842,24 +864,38 @@ const PortalChoice = ({ onSelect, onBack }) => {
 
 // --- MAIN APP COMPONENT ---
 const App = () => {
-    const [view, setView] = useState('landing');
-    const [portalType, setPortalType] = useState(null);
+    const { path, fullHash, navigate } = useRouter();
     const [user, setUser] = useState(null);
     const [ready, setReady] = useState(false);
 
+    // Initial load
     useEffect(() => { setTimeout(() => setReady(true), 800); }, []);
+
+    // Determine Logic View from Hash
+    const rootPath = path[0]; // e.g., 'dashboard'
+
+    // Auth portal type from query params or simple sub-hash #auth/client
+    const authType = path[0] === 'auth' ? path[1] : null;
+
+    const handleLoginSuccess = (userData) => {
+        setUser(userData);
+        navigate('dashboard');
+    };
+
+    const handleLogout = () => {
+        setUser(null);
+        navigate(''); // Back to landing
+    };
 
     if (!ready) return <div className="h-screen bg-[#0f172a] flex items-center justify-center"><div className="w-16 h-16 border-4 border-blue-600/20 border-t-blue-500 rounded-full animate-spin"></div></div>;
 
-    const handleLoginSuccess = (userData) => { setUser(userData); setView('dashboard'); };
-    const handleLogout = () => { setUser(null); setView('landing'); };
+    if (rootPath === 'portal') return <PortalChoice onSelect={(type) => navigate(`auth/${type}`)} onBack={() => navigate('')} />;
 
-    if (view === 'landing') return <LandingPage onGetStarted={() => setView('choice')} />;
-    if (view === 'choice') return <PortalChoice onSelect={(type) => { setPortalType(type); setView('auth'); }} onBack={() => setView('landing')} />;
-    if (view === 'auth') return <AuthScreen forceStep={portalType === 'admin' ? 'admin' : 'phone'} onLoginSuccess={handleLoginSuccess} onBack={() => setView('choice')} />;
-    if (view === 'dashboard' && user) return <Dashboard user={user} onLogout={handleLogout} />;
+    if (rootPath === 'auth') return <AuthScreen forceStep={authType === 'admin' ? 'admin' : 'phone'} onLoginSuccess={handleLoginSuccess} />;
 
-    return <div className="h-screen bg-[#0f172a] flex items-center justify-center text-gray-500">Loading Application...</div>;
+    if (rootPath === 'dashboard' && user) return <Dashboard user={user} onLogout={handleLogout} />;
+
+    return <LandingPage onGetStarted={() => navigate('portal')} />;
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
