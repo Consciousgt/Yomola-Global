@@ -1,4 +1,4 @@
-// Firebase Configuration
+// --- FIREBASE INITIALIZATION ---
 const firebaseConfig = {
     apiKey: "AIzaSyCXm7IybpnE17zdXnbo7OdD32KSTXKqmSY",
     authDomain: "yomola-global-1f552.firebaseapp.com",
@@ -9,14 +9,9 @@ const firebaseConfig = {
     measurementId: "G-LTJ10SLL4Y"
 };
 
-// Initialize Firebase
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 const db = firebase.firestore();
 
-// Make available globally for other scripts
 window.db = db;
-window.firebaseConfig = firebaseConfig;
-window.formatMoney = (amount) => '₦' + (amount || 0).toLocaleString();
-window.formatDate = (dateStr) => new Date(dateStr).toLocaleDateString();
