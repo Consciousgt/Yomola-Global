@@ -96,10 +96,19 @@ const CloudStorage = {
         });
     },
     loadTransactions: async (clientId = null) => {
-        let query = db.collection('transactions').orderBy('date', 'desc');
-        if (clientId) query = query.where('clientId', '==', clientId);
+        let query = db.collection('transactions');
+        // If filtering by client, do not order by date in the query to avoid missing index
+        if (clientId) {
+            query = query.where('clientId', '==', clientId);
+        } else {
+            query = query.orderBy('date', 'desc');
+        }
+
         const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+
+        // Ensure sorting is consistent in memory
+        return docs.sort((a, b) => new Date(b.date) - new Date(a.date));
     },
     addTransaction: async (tx, currentBalance) => {
         const batch = db.batch();
